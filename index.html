@@ -132,9 +132,10 @@
 <div class="overlay" id="overlay"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
 
-<!-- SDK do Firebase (Firestore) -->
+<!-- SDK do Firebase (Firestore + Auth) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 
 <script>
 /* ============================================================
@@ -155,39 +156,55 @@ const firebaseConfig = {
 /* ▲▲▲ fim da configuração ▲▲▲ */
 
 const USE_FIRESTORE = !String(firebaseConfig.apiKey).includes('COLE_AQUI');
-let fdb = null;
-if(USE_FIRESTORE){ firebase.initializeApp(firebaseConfig); fdb = firebase.firestore(); }
+let fdb = null, fauth = null;
+if(USE_FIRESTORE){ firebase.initializeApp(firebaseConfig); fdb = firebase.firestore(); fauth = firebase.auth(); }
+
+// E-mails que são administradores (acesso total). Edite aqui para adicionar admins.
+const ADMIN_EMAILS = ['admin@pap.com'];
+const isAdminEmail = e => ADMIN_EMAILS.includes(String(e||'').toLowerCase());
 
 const uid = ()=> Math.random().toString(36).slice(2,10);
 const MP_FEE = 10; // % taxa fintech (fixa) em todos os jogos
-const COLLS = ['users','athletes','projects','games','bets'];
 
 function seedAdmin(){ return {id:'admin',name:'Admin',email:'admin@pap.com',pass:'pap123',role:'admin',pixType:'CPF',pixKey:'—'}; }
 function seed(){ return {users:[seedAdmin()],athletes:[],projects:[],games:[],bets:[]}; }
+
+/* ---------- Listeners em tempo real (ativados após o login) ---------- */
+let _unsubs=[];
+function applySnap(coll, snap){
+  const arr=[]; snap.forEach(d=>arr.push(d.data()));
+  if(coll==='games') arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  if(coll==='bets')  arr.sort((a,b)=>(a.ts||0)-(b.ts||0));
+  DB._data[coll]=arr; rerender();
+}
+function startListeners(prof){
+  stopListeners();
+  const onErr = err=>{ console.error('Firestore:',err); toast('Erro de acesso: '+err.code); };
+  ['athletes','projects','games','bets'].forEach(coll=>{
+    _unsubs.push(fdb.collection(coll).onSnapshot(s=>applySnap(coll,s), onErr));
+  });
+  // a coleção 'users' inteira só é legível pelo admin; torcedor ouve só o próprio perfil
+  if(prof.role==='admin'){
+    _unsubs.push(fdb.collection('users').onSnapshot(s=>applySnap('users',s), onErr));
+  } else {
+    _unsubs.push(fdb.collection('users').doc(prof.id).onSnapshot(d=>{
+      DB._data.users = d.exists?[d.data()]:[prof]; rerender();
+    }, onErr));
+  }
+}
+function stopListeners(){ _unsubs.forEach(u=>{try{u();}catch(e){}}); _unsubs=[]; DB._data={users:[],athletes:[],projects:[],games:[],bets:[]}; }
 
 /* ---------- DB: Firestore (tempo real) com fallback localStorage ---------- */
 const DB = {
   KEY: 'pontoaponto_v3',
   _data: {users:[],athletes:[],projects:[],games:[],bets:[]},
   init(){
-    if(USE_FIRESTORE){
-      // garante que a conta admin exista (idempotente)
-      fdb.collection('users').doc('admin').set(seedAdmin(), {merge:true});
-      // ouve cada coleção em tempo real
-      COLLS.forEach(coll=>{
-        fdb.collection(coll).onSnapshot(snap=>{
-          const arr=[]; snap.forEach(d=>arr.push(d.data()));
-          if(coll==='games') arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
-          if(coll==='bets')  arr.sort((a,b)=>(a.ts||0)-(b.ts||0));
-          this._data[coll]=arr;
-          rerender();
-        }, err=>{ console.error('Firestore:',err); toast('Erro Firestore: '+err.message); });
-      });
-    } else {
+    if(!USE_FIRESTORE){
       const raw=localStorage.getItem(this.KEY);
       this._data = raw?JSON.parse(raw):seed();
       if(!raw) this._saveLocal();
     }
+    // No modo Firestore os listeners ligam após o login (startListeners).
   },
   _saveLocal(){ localStorage.setItem(this.KEY, JSON.stringify(this._data)); },
   // upsert de um registro (cache + persistência)
@@ -279,12 +296,32 @@ function renderAuth(mode='login'){
     `}
   </div>`;
 }
-function doLogin(){
+async function doLogin(){
   const email=$('#li-email').value.trim().toLowerCase(), pass=$('#li-pass').value.trim();
   const passDigits=pass.replace(/\D/g,'');
-  const u=DB.users.find(u=>u.email.toLowerCase()===email && (u.pass===pass || (passDigits&&u.pass===passDigits)));
-  if(!u){ toast('E-mail ou senha inválidos'); return; }
-  S.user=u; S.tab = u.role==='coordenador'?'admin':'jogos'; renderApp();
+  if(!USE_FIRESTORE){ // modo offline (localStorage)
+    const u=DB.users.find(u=>u.email.toLowerCase()===email && (u.pass===pass || (passDigits&&u.pass===passDigits)));
+    if(!u){ toast('E-mail ou senha inválidos'); return; }
+    S.user=u; S.tab = u.role==='coordenador'?'admin':'jogos'; renderApp(); return;
+  }
+  // Firebase Auth: tenta com o que foi digitado; se falhar, tenta só os números (CPF com pontos)
+  try{ await fauth.signInWithEmailAndPassword(email, pass); }
+  catch(e){
+    if(passDigits && passDigits!==pass && passDigits.length>=6){
+      try{ await fauth.signInWithEmailAndPassword(email, passDigits); return; }catch(e2){ toast(authErro(e2)); return; }
+    }
+    toast(authErro(e));
+  }
+}
+function authErro(e){
+  const c=e&&e.code||'';
+  if(c.includes('invalid-credential')||c.includes('wrong-password')||c.includes('user-not-found')) return 'E-mail ou senha inválidos';
+  if(c.includes('email-already-in-use')) return 'E-mail já cadastrado';
+  if(c.includes('weak-password')) return 'Senha muito curta (mín. 6)';
+  if(c.includes('invalid-email')) return 'E-mail inválido';
+  if(c.includes('too-many-requests')) return 'Muitas tentativas. Tente mais tarde';
+  if(c.includes('network')) return 'Sem conexão. Tente de novo';
+  return 'Erro: '+(c||e.message||'desconhecido');
 }
 // Formata CPF enquanto digita: 000.000.000-00
 function onCpfInput(el){
@@ -295,20 +332,48 @@ function onCpfInput(el){
   else if(d.length>3) out=`${d.slice(0,3)}.${d.slice(3)}`;
   el.value=out;
 }
-function doRegister(){
+async function doRegister(){
   const name=$('#rg-name').value.trim(), email=$('#rg-email').value.trim().toLowerCase(),
         cpfRaw=$('#rg-cpf').value.replace(/\D/g,''), pixType=$('#rg-pixtype').value;
   let pixKey=$('#rg-pixkey').value.trim();
   if(!name||!email){ toast('Preencha nome e e-mail'); return; }
   if(cpfRaw.length!==11){ toast('Digite um CPF válido (11 números)'); return; }
-  if(DB.users.some(u=>u.email.toLowerCase()===email)){ toast('E-mail já cadastrado'); return; }
   if(!pixKey) pixKey = pixType==='CPF' ? $('#rg-cpf').value.trim() : '';
-  // senha = CPF (só números). Login = e-mail.
-  const u={id:uid(),name,email,pass:cpfRaw,cpf:cpfRaw,role:'torcedor',pixType,pixKey:pixKey||'—',createdAt:Date.now()};
-  DB.put('users',u); S.user=u; S.tab='jogos'; renderApp();
-  toast('Conta criada! Bem-vindo 🎾');
+  if(!USE_FIRESTORE){ // modo offline
+    if(DB.users.some(u=>u.email.toLowerCase()===email)){ toast('E-mail já cadastrado'); return; }
+    const u={id:uid(),name,email,pass:cpfRaw,cpf:cpfRaw,role:'torcedor',pixType,pixKey:pixKey||'—',createdAt:Date.now()};
+    DB.put('users',u); S.user=u; S.tab='jogos'; renderApp(); toast('Conta criada! Bem-vindo 🎾'); return;
+  }
+  // Firebase Auth: cria a conta (senha = CPF) e o perfil no Firestore
+  try{
+    const cred = await fauth.createUserWithEmailAndPassword(email, cpfRaw);
+    const id = cred.user.uid;
+    const prof = {id,name,email,cpf:cpfRaw,role:'torcedor',pixType,pixKey:pixKey||'—',createdAt:Date.now()};
+    await fdb.collection('users').doc(id).set(prof);
+    toast('Conta criada! Bem-vindo 🎾'); // onAuthStateChanged cuida do resto
+  }catch(e){ toast(authErro(e)); }
 }
-function logout(){ S.user=null; renderAuth('login'); }
+function logout(){
+  if(USE_FIRESTORE){ fauth.signOut(); } // onAuthStateChanged volta pro login
+  else { S.user=null; renderAuth('login'); }
+}
+// Reage ao login/logout do Firebase: carrega o perfil e liga os dados em tempo real
+async function onAuthUser(user){
+  if(!user){ stopListeners(); S.user=null; currentRender=null; renderAuth('login'); return; }
+  let prof;
+  try{
+    const snap = await fdb.collection('users').doc(user.uid).get();
+    prof = snap.exists ? snap.data() : {id:user.uid,name:(user.email||'').split('@')[0],email:user.email,role:'torcedor',pixType:'CPF',pixKey:'—',createdAt:Date.now()};
+  }catch(e){ prof = {id:user.uid,name:(user.email||'').split('@')[0],email:user.email,role:'torcedor',pixType:'CPF',pixKey:'—'}; }
+  if(isAdminEmail(user.email)) prof.role='admin';
+  prof.id = user.uid;
+  // garante que o perfil exista no banco (ex.: primeiro login do admin)
+  try{ await fdb.collection('users').doc(user.uid).set(prof, {merge:true}); }catch(e){}
+  S.user = prof;
+  S.tab = prof.role==='coordenador' ? 'admin' : 'jogos';
+  startListeners(prof);
+  renderApp();
+}
 
 /* ============================================================
    NAV + ROUTER
@@ -456,7 +521,7 @@ function fakeQR(){
 }
 function confirmBet(){
   const g=game(bet.gameId);
-  const b={id:uid(),gameId:bet.gameId,userId:S.user.id,athleteId:bet.athleteId,amount:bet.amount,
+  const b={id:uid(),gameId:bet.gameId,userId:S.user.id,userName:S.user.name,athleteId:bet.athleteId,amount:bet.amount,
     social:bet.amount*g.socialPct/100, house:bet.amount*g.housePct/100, mp:bet.amount*MP_FEE/100,
     estWin:bet.amount*g.odd, status:'aguardando', paid:false, ts:Date.now()};
   DB.put('bets', b);
@@ -541,10 +606,10 @@ function viewImpacto(){
    RANKING
    ============================================================ */
 function viewRanking(){
+  // usa o nome gravado na própria torcida (userName), sem precisar ler dados de outros usuários
   const map={};
-  DB.bets.forEach(b=>{ map[b.userId]=(map[b.userId]||0)+b.social; });
-  const rows=Object.entries(map).map(([id,v])=>({u:DB.users.find(x=>x.id===id),v}))
-    .filter(r=>r.u).sort((a,b)=>b.v-a.v);
+  DB.bets.forEach(b=>{ const k=b.userId; if(!map[k]) map[k]={name:b.userName||'Torcedor',v:0}; map[k].v+=b.social; });
+  const rows=Object.entries(map).map(([id,o])=>({id,name:o.name,v:o.v})).sort((a,b)=>b.v-a.v);
   const medal=i=>['🥇','🥈','🥉'][i]||(i+1);
   $('#view').innerHTML=`<div class="screen">
     <div style="display:flex;justify-content:flex-end"><button class="back" style="margin:0" onclick="logout()">↪ Sair</button></div>
@@ -552,8 +617,8 @@ function viewRanking(){
     <p class="muted" style="margin:6px 0 20px">Quem mais contribuiu para projetos sociais 🌱</p>
     ${rows.length?rows.map((r,i)=>`<div class="rank-row">
         <div class="rank-pos">${medal(i)}</div>
-        <div class="avatar" style="width:44px;height:44px">${initials(r.u.name)}</div>
-        <div style="flex:1"><b>${r.u.name}${r.u.id===S.user.id?' <span class="muted2">(você)</span>':''}</b></div>
+        <div class="avatar" style="width:44px;height:44px">${initials(r.name)}</div>
+        <div style="flex:1"><b>${r.name}${r.id===S.user.id?' <span class="muted2">(você)</span>':''}</b></div>
         <b class="blue">${money(r.v)}</b>
       </div>`).join(''):'<div class="empty">Ninguém torceu ainda. Seja o primeiro a ajudar!</div>'}
   </div>`;
@@ -823,25 +888,30 @@ function deleteGame(gid){
 }
 
 function formCoord(){
-  const coords=DB.users.filter(u=>u.role==='coordenador');
+  // A pessoa primeiro cria a conta dela (Cadastrar). O admin então a promove a coordenador.
+  const people=DB.users.filter(u=>u.role!=='admin' && u.id!=='admin');
+  const coords=people.filter(u=>u.role==='coordenador');
+  const others=people.filter(u=>u.role!=='coordenador');
+  const row=(u,isCoord)=>`<div class="list-item">
+    <div class="avatar" style="width:44px;height:44px">${initials(u.name||'?')}</div>
+    <div style="flex:1;min-width:0"><b>${u.name||'?'}</b><div class="muted2" style="word-break:break-all">${u.email||''}</div></div>
+    <button class="btn ${isCoord?'btn-ghost':'btn-purple'} btn-sm" style="flex:none;width:auto" onclick="setRole('${u.id}','${isCoord?'torcedor':'coordenador'}')">
+      ${isCoord?'Remover':'Tornar coord.'}</button></div>`;
   openSheet(`<button class="back" onclick="closeSheet()">← Voltar</button>
     <h1 style="margin-bottom:6px">Juízes / Coordenadores</h1>
-    <p class="muted" style="margin:0 0 18px">Podem criar jogos, atletas e lançar resultados. <b>Sem acesso ao financeiro.</b></p>
-    <div class="field"><div class="label">Nome</div><input id="c-name" placeholder="Nome do coordenador"></div>
-    <div class="field"><div class="label">E-mail (login)</div><input id="c-email" placeholder="email@exemplo.com"></div>
-    <div class="field"><div class="label">Senha</div><input id="c-pass" placeholder="senha de acesso"></div>
-    <button class="btn btn-gold" onclick="saveCoord()">✓ Cadastrar coordenador</button>
-    <div class="label" style="margin:24px 0 4px">Cadastrados (${coords.length})</div>
-    ${coords.map(c=>`<div class="list-item"><div class="avatar" style="width:44px;height:44px">${initials(c.name)}</div>
-      <div><b>${c.name}</b><div class="muted2">${c.email}</div></div></div>`).join('')}
+    <p class="muted" style="margin:0 0 16px">Podem criar jogos, atletas e lançar resultados. <b>Sem acesso ao financeiro.</b></p>
+    <div class="card soft" style="margin-bottom:18px"><div class="muted2" style="font-size:13px">Como funciona: a pessoa cria a conta dela normalmente (tela <b>Cadastrar</b>). Depois você a promove aqui a coordenador.</div></div>
+    <div class="label">Coordenadores (${coords.length})</div>
+    ${coords.length?coords.map(c=>row(c,true)).join(''):'<div class="muted2" style="padding:8px 0">Nenhum ainda.</div>'}
+    <div class="label" style="margin-top:22px">Torcedores cadastrados (${others.length})</div>
+    ${others.length?others.map(c=>row(c,false)).join(''):'<div class="muted2" style="padding:8px 0">Nenhum cadastrado ainda.</div>'}
   `);
 }
-function saveCoord(){
-  const name=$('#c-name').value.trim(), email=$('#c-email').value.trim().toLowerCase(), pass=$('#c-pass').value;
-  if(!name||!email||!pass){ toast('Preencha todos os campos'); return; }
-  if(DB.users.some(u=>u.email.toLowerCase()===email)){ toast('E-mail já existe'); return; }
-  DB.put('users',{id:uid(),name,email,pass,role:'coordenador',pixType:'CPF',pixKey:'—',createdAt:Date.now()});
-  toast('Coordenador cadastrado ✓'); formCoord();
+function setRole(id, role){
+  const u=DB.users.find(x=>x.id===id); if(!u) return;
+  u.role=role; DB.put('users',u);
+  toast(role==='coordenador'?'Promovido a coordenador ✓':'Voltou a ser torcedor');
+  formCoord();
 }
 
 /* ---------- Resultado / liquidação (rateio) ---------- */
@@ -895,8 +965,13 @@ $('#overlay').addEventListener('click',e=>{ if(e.target.id==='overlay') closeShe
 
 /* ---------- Boot ---------- */
 DB.init();
-renderAuth('login');
-console.log(USE_FIRESTORE ? '🔥 Firestore conectado (dados em tempo real)' : '💾 Modo offline (localStorage). Configure o Firebase para tempo real.');
+if(USE_FIRESTORE){
+  console.log('🔥 Firestore + Auth conectados');
+  fauth.onAuthStateChanged(onAuthUser); // mostra login ou app conforme estiver logado
+} else {
+  console.log('💾 Modo offline (localStorage).');
+  renderAuth('login');
+}
 </script>
 </body>
 </html>
