@@ -132,44 +132,85 @@
 <div class="overlay" id="overlay"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
 
+<!-- SDK do Firebase (Firestore) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
 <script>
 /* ============================================================
-   PONTO A PONTO — protótipo offline
-   Camada de dados isolada (DB) -> trocar por Firebase depois.
+   PONTO A PONTO
+   Camada de dados isolada (DB): usa Firestore se configurado,
+   senão cai no localStorage (modo offline) automaticamente.
    ============================================================ */
 
-/* ---------- DB (localStorage) — swap por Firestore no futuro ---------- */
-const DB = {
-  KEY: 'pontoaponto_v3',
-  _data: null,
-  load(){
-    if(this._data) return this._data;
-    const raw = localStorage.getItem(this.KEY);
-    this._data = raw ? JSON.parse(raw) : null;
-    if(!this._data){ this._data = seed(); this.save(); }
-    return this._data;
-  },
-  save(){ localStorage.setItem(this.KEY, JSON.stringify(this._data)); },
-  reset(){ localStorage.removeItem(this.KEY); this._data=null; this.load(); },
-  get users(){ return this.load().users; },
-  get athletes(){ return this.load().athletes; },
-  get projects(){ return this.load().projects; },
-  get games(){ return this.load().games; },
-  get bets(){ return this.load().bets; },
+/* ▼▼▼ COLE AQUI a configuração do seu Firebase (Console > Configurações do projeto > Seus apps) ▼▼▼ */
+const firebaseConfig = {
+  apiKey: "AIzaSyByq09x1ZI40F2xSi5nqP9UeWJa6XersAE",
+  authDomain: "ponto-a-ponto-93069.firebaseapp.com",
+  projectId: "ponto-a-ponto-93069",
+  storageBucket: "ponto-a-ponto-93069.firebasestorage.app",
+  messagingSenderId: "32264922540",
+  appId: "1:32264922540:web:683d060069bd1496490609"
 };
+/* ▲▲▲ fim da configuração ▲▲▲ */
+
+const USE_FIRESTORE = !String(firebaseConfig.apiKey).includes('COLE_AQUI');
+let fdb = null;
+if(USE_FIRESTORE){ firebase.initializeApp(firebaseConfig); fdb = firebase.firestore(); }
+
 const uid = ()=> Math.random().toString(36).slice(2,10);
 const MP_FEE = 10; // % taxa fintech (fixa) em todos os jogos
+const COLLS = ['users','athletes','projects','games','bets'];
 
-function seed(){
-  const admin={id:uid(),name:'Admin',email:'admin@pap.com',pass:'pap123',role:'admin',pixType:'CPF',pixKey:'—'};
-  return {
-    users:[admin],
-    athletes:[],
-    projects:[],
-    games:[],
-    bets:[]
-  };
-}
+function seedAdmin(){ return {id:'admin',name:'Admin',email:'admin@pap.com',pass:'pap123',role:'admin',pixType:'CPF',pixKey:'—'}; }
+function seed(){ return {users:[seedAdmin()],athletes:[],projects:[],games:[],bets:[]}; }
+
+/* ---------- DB: Firestore (tempo real) com fallback localStorage ---------- */
+const DB = {
+  KEY: 'pontoaponto_v3',
+  _data: {users:[],athletes:[],projects:[],games:[],bets:[]},
+  init(){
+    if(USE_FIRESTORE){
+      // garante que a conta admin exista (idempotente)
+      fdb.collection('users').doc('admin').set(seedAdmin(), {merge:true});
+      // ouve cada coleção em tempo real
+      COLLS.forEach(coll=>{
+        fdb.collection(coll).onSnapshot(snap=>{
+          const arr=[]; snap.forEach(d=>arr.push(d.data()));
+          if(coll==='games') arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+          if(coll==='bets')  arr.sort((a,b)=>(a.ts||0)-(b.ts||0));
+          this._data[coll]=arr;
+          rerender();
+        }, err=>{ console.error('Firestore:',err); toast('Erro Firestore: '+err.message); });
+      });
+    } else {
+      const raw=localStorage.getItem(this.KEY);
+      this._data = raw?JSON.parse(raw):seed();
+      if(!raw) this._saveLocal();
+    }
+  },
+  _saveLocal(){ localStorage.setItem(this.KEY, JSON.stringify(this._data)); },
+  // upsert de um registro (cache + persistência)
+  put(coll, obj){
+    const arr=this._data[coll], i=arr.findIndex(x=>x.id===obj.id);
+    if(i>=0) arr[i]=obj; else if(coll==='games') arr.unshift(obj); else arr.push(obj);
+    if(USE_FIRESTORE) fdb.collection(coll).doc(obj.id).set(obj).catch(e=>toast('Falha ao salvar: '+e.message));
+    else this._saveLocal();
+    rerender();
+  },
+  // remove um registro
+  del(coll, id){
+    const arr=this._data[coll], i=arr.findIndex(x=>x.id===id); if(i>=0) arr.splice(i,1);
+    if(USE_FIRESTORE) fdb.collection(coll).doc(id).delete().catch(e=>toast('Falha ao apagar: '+e.message));
+    else this._saveLocal();
+    rerender();
+  },
+  get users(){ return this._data.users; },
+  get athletes(){ return this._data.athletes; },
+  get projects(){ return this._data.projects; },
+  get games(){ return this._data.games; },
+  get bets(){ return this._data.bets; },
+};
 
 /* ---------- Helpers ---------- */
 const $ = s=>document.querySelector(s);
@@ -188,6 +229,8 @@ function prizePool(g){ const pool=gamePool(g.id); return pool*(100-g.socialPct-g
 
 /* ---------- App state ---------- */
 let S = { user:null, tab:'jogos' };
+let currentRender = null; // tela atual, re-renderizada quando o Firestore traz dados novos
+function rerender(){ if(S.user && currentRender) currentRender(); }
 
 /* ============================================================
    AUTH
@@ -261,8 +304,8 @@ function doRegister(){
   if(DB.users.some(u=>u.email.toLowerCase()===email)){ toast('E-mail já cadastrado'); return; }
   if(!pixKey) pixKey = pixType==='CPF' ? $('#rg-cpf').value.trim() : '';
   // senha = CPF (só números). Login = e-mail.
-  const u={id:uid(),name,email,pass:cpfRaw,cpf:cpfRaw,role:'torcedor',pixType,pixKey:pixKey||'—'};
-  DB.users.push(u); DB.save(); S.user=u; S.tab='jogos'; renderApp();
+  const u={id:uid(),name,email,pass:cpfRaw,cpf:cpfRaw,role:'torcedor',pixType,pixKey:pixKey||'—',createdAt:Date.now()};
+  DB.put('users',u); S.user=u; S.tab='jogos'; renderApp();
   toast('Conta criada! Bem-vindo 🎾');
 }
 function logout(){ S.user=null; renderAuth('login'); }
@@ -292,7 +335,8 @@ function go(tab){ S.tab=tab; renderApp(); }
 function renderApp(){
   if(!S.user){ renderAuth('login'); return; }
   renderNav();
-  ({jogos:viewJogos,torcida:viewTorcida,impacto:viewImpacto,ranking:viewRanking,admin:viewAdmin}[S.tab]||viewJogos)();
+  currentRender = {jogos:viewJogos,torcida:viewTorcida,impacto:viewImpacto,ranking:viewRanking,admin:viewAdmin}[S.tab]||viewJogos;
+  currentRender();
 }
 
 /* ============================================================
@@ -415,7 +459,7 @@ function confirmBet(){
   const b={id:uid(),gameId:bet.gameId,userId:S.user.id,athleteId:bet.athleteId,amount:bet.amount,
     social:bet.amount*g.socialPct/100, house:bet.amount*g.housePct/100, mp:bet.amount*MP_FEE/100,
     estWin:bet.amount*g.odd, status:'aguardando', paid:false, ts:Date.now()};
-  DB.bets.push(b); DB.save();
+  DB.put('bets', b);
   const a=ath(bet.athleteId), pj=proj(g.projectId);
   openSheet(`
     <div class="confetti">🎉</div>
@@ -587,6 +631,7 @@ function payItems(){
 let payFilter='aberto';
 function setPayFilter(f){ payFilter=f; viewPayments(); }
 function viewPayments(){
+  currentRender = viewPayments;
   const all=payItems();
   const open=all.filter(i=>!i.paid), paid=all.filter(i=>i.paid);
   const list = payFilter==='aberto'?open : payFilter==='pago'?paid : all;
@@ -633,8 +678,8 @@ function copyPix(k){
   toast('Chave Pix copiada ✓');
 }
 function togglePay(id){
-  if(id.startsWith('pj-')){ const g=game(id.slice(3)); if(g){ g.projectPaid=!g.projectPaid; DB.save(); } }
-  else { const b=DB.bets.find(x=>x.id===id.slice(4)); if(b){ b.paid=!b.paid; DB.save(); } }
+  if(id.startsWith('pj-')){ const g=game(id.slice(3)); if(g){ g.projectPaid=!g.projectPaid; DB.put('games',g); } }
+  else { const b=DB.bets.find(x=>x.id===id.slice(4)); if(b){ b.paid=!b.paid; DB.put('bets',b); } }
   viewPayments(); toast('Status atualizado');
 }
 // Exporta a planilha de pagamentos (CSV; abre no Excel / Google Sheets)
@@ -689,7 +734,7 @@ function previewAthlete(inp){
 function saveAthlete(){
   const name=$('#at-name').value.trim(); if(!name){ toast('Informe o nome'); return; }
   const nick=$('#at-nick').value.trim()||name.split(' ')[0];
-  DB.athletes.push({id:uid(),fullName:name,nickname:nick,photo:athletePhoto}); DB.save(); athletePhoto=null;
+  DB.put('athletes',{id:uid(),fullName:name,nickname:nick,photo:athletePhoto,createdAt:Date.now()}); athletePhoto=null;
   toast('Atleta cadastrado ✓'); formAthlete();
 }
 
@@ -708,8 +753,8 @@ function formProject(){
 }
 function saveProject(){
   const name=$('#pj-name').value.trim(); if(!name){ toast('Informe o nome'); return; }
-  DB.projects.push({id:uid(),name,desc:$('#pj-desc').value.trim(),emoji:$('#pj-emoji').value||'🎾',
-    goal:parseFloat($('#pj-goal').value)||1000,raised:0}); DB.save();
+  DB.put('projects',{id:uid(),name,desc:$('#pj-desc').value.trim(),emoji:$('#pj-emoji').value||'🎾',
+    goal:parseFloat($('#pj-goal').value)||1000,raised:0,createdAt:Date.now()});
   toast('Projeto cadastrado ✓'); formProject();
 }
 
@@ -762,10 +807,10 @@ function saveGame(editId){
     projectId:$('#g-proj').value, socialPct:parseFloat($('#g-sp').value)||20,
     housePct:isCoord?5:(parseFloat($('#g-hp').value)||10)};
   if(editId){
-    const g=game(editId); if(g){ Object.assign(g,fields); DB.save(); toast('Jogo atualizado ✓'); }
+    const g=game(editId); if(g){ Object.assign(g,fields); DB.put('games',g); toast('Jogo atualizado ✓'); }
   } else {
-    DB.games.unshift({id:uid(),...fields, odd:2, status:'aberto', winner:null, createdBy:S.user.id});
-    DB.save(); toast('Jogo criado ✓');
+    DB.put('games',{id:uid(),...fields, odd:2, status:'aberto', winner:null, createdBy:S.user.id, createdAt:Date.now()});
+    toast('Jogo criado ✓');
   }
   closeSheet(); viewAdmin();
 }
@@ -773,8 +818,7 @@ function deleteGame(gid){
   const n=DB.bets.filter(b=>b.gameId===gid).length;
   if(n>0){ toast(`Não dá para apagar: já tem ${n} torcida(s)`); return; }
   if(!confirm('Apagar este jogo? Esta ação não pode ser desfeita.')) return;
-  const i=DB.games.findIndex(g=>g.id===gid);
-  if(i>=0){ DB.games.splice(i,1); DB.save(); toast('Jogo apagado'); }
+  DB.del('games', gid); toast('Jogo apagado');
   viewAdmin();
 }
 
@@ -796,7 +840,7 @@ function saveCoord(){
   const name=$('#c-name').value.trim(), email=$('#c-email').value.trim().toLowerCase(), pass=$('#c-pass').value;
   if(!name||!email||!pass){ toast('Preencha todos os campos'); return; }
   if(DB.users.some(u=>u.email.toLowerCase()===email)){ toast('E-mail já existe'); return; }
-  DB.users.push({id:uid(),name,email,pass,role:'coordenador',pixType:'CPF',pixKey:'—'}); DB.save();
+  DB.put('users',{id:uid(),name,email,pass,role:'coordenador',pixType:'CPF',pixKey:'—',createdAt:Date.now()});
   toast('Coordenador cadastrado ✓'); formCoord();
 }
 
@@ -822,20 +866,25 @@ function formResult(gid){
   `);
 }
 function settle(gid, winnerId){
-  const g=game(gid); g.status='encerrado'; g.winner=winnerId;
+  const g=game(gid);
   const bets=DB.bets.filter(b=>b.gameId===gid);
   const prize=prizePool(g);
   const winStake=bets.filter(b=>b.athleteId===winnerId).reduce((s,b)=>s+b.amount,0);
+  // realiza a arrecadação social no projeto
+  const pj=proj(g.projectId);
+  if(pj){
+    pj.raised += gamePool(gid)*g.socialPct/100;
+    if(!winStake) pj.raised += prize; // se ninguém acertou, o prêmio vira doação
+    DB.put('projects', pj);
+  }
+  // grava cada torcida (ganhou/perdeu + valor a receber)
   bets.forEach(b=>{
     if(b.athleteId===winnerId){ b.status='ganhou'; b.payout = winStake?prize*(b.amount/winStake):0; }
     else { b.status='perdeu'; b.payout=0; }
+    DB.put('bets', b);
   });
-  // realiza a arrecadação social no projeto
-  const pj=proj(g.projectId);
-  if(pj){ pj.raised += gamePool(gid)*g.socialPct/100; }
-  // se ninguém acertou, o prêmio vira doação ao projeto
-  if(!winStake && pj){ pj.raised += prize; }
-  DB.save(); closeSheet(); viewAdmin();
+  g.status='encerrado'; g.winner=winnerId; DB.put('games', g);
+  closeSheet(); viewAdmin();
   toast('Jogo encerrado e rateio calculado ✓');
 }
 
@@ -845,8 +894,9 @@ function closeSheet(){ $('#overlay').classList.remove('open'); }
 $('#overlay').addEventListener('click',e=>{ if(e.target.id==='overlay') closeSheet(); });
 
 /* ---------- Boot ---------- */
-DB.load();
+DB.init();
 renderAuth('login');
+console.log(USE_FIRESTORE ? '🔥 Firestore conectado (dados em tempo real)' : '💾 Modo offline (localStorage). Configure o Firebase para tempo real.');
 </script>
 </body>
 </html>
