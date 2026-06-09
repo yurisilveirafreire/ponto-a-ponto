@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#13205f" />
+<title>Ponto a Ponto — Entretenimento Esportivo Social</title>
+<style>
+  :root{
+    --bg-top:#1e2d95; --bg-bot:#0b1455;
+    --navy:#13205f; --navy-2:#1a2a7a;
+    --card:rgba(255,255,255,.07); --card-2:rgba(255,255,255,.10);
+    --border:rgba(255,255,255,.14); --border-strong:rgba(255,255,255,.28);
+    --gold:#f5c518; --gold-2:#f0b90b;
+    --green:#34d399; --blue:#7aa2ff; --purple:#b69bff;
+    --txt:#ffffff; --muted:#93a3d8; --muted-2:#7282bd;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:linear-gradient(180deg,var(--bg-top),var(--bg-bot)); color:var(--txt);
+    -webkit-font-smoothing:antialiased; overflow:hidden;
+  }
+  #app{max-width:480px;margin:0 auto;height:100vh;height:100dvh;display:flex;flex-direction:column;position:relative;overflow:hidden;}
+  #view{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;}
+  .screen{flex:1;min-height:0;overflow-y:auto;padding:26px 22px 120px;-webkit-overflow-scrolling:touch;}
+  .screen::-webkit-scrollbar{display:none;}
+
+  h1{font-size:30px;font-weight:800;margin:2px 0 0;letter-spacing:-.5px;}
+  .eyebrow{font-size:13px;font-weight:700;letter-spacing:1px;color:var(--muted-2);text-transform:uppercase;margin:0;}
+  .label{font-size:12px;font-weight:800;letter-spacing:1.2px;color:var(--muted);text-transform:uppercase;margin:0 0 8px;}
+  .muted{color:var(--muted);} .muted2{color:var(--muted-2);}
+  .gold{color:var(--gold);} .green{color:var(--green);} .blue{color:var(--blue);}
+
+  input,select,textarea{
+    width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:14px;
+    color:#fff;font-size:17px;padding:15px 16px;outline:none;font-family:inherit;
+  }
+  input::placeholder,textarea::placeholder{color:var(--muted-2);}
+  input:focus,select:focus,textarea:focus{border-color:var(--gold);}
+  select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='%2393a3d8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 16px center;padding-right:40px;}
+  .field{margin-bottom:18px;}
+
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:none;border-radius:16px;
+    padding:17px;font-size:17px;font-weight:800;cursor:pointer;font-family:inherit;transition:transform .06s, filter .15s;}
+  .btn:active{transform:scale(.985);}
+  .btn-gold{background:linear-gradient(180deg,var(--gold),var(--gold-2));color:#101a4d;}
+  .btn-ghost{background:var(--card-2);color:#fff;border:1.5px solid var(--border);}
+  .btn-purple{background:rgba(150,123,255,.12);color:var(--purple);border:1.5px solid rgba(150,123,255,.5);}
+  .btn-sm{padding:13px 16px;font-size:15px;border-radius:13px;}
+  .row{display:flex;gap:10px;} .row>*{flex:1;} .row.tight{gap:8px;}
+  .back{background:none;border:none;color:var(--blue);font-size:18px;font-weight:700;cursor:pointer;padding:0;display:flex;align-items:center;gap:6px;margin-bottom:14px;}
+
+  .card{background:var(--card);border:1.5px solid var(--border);border-radius:18px;padding:18px;}
+  .card.soft{background:var(--card-2);}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:800;background:var(--card-2);border:1px solid var(--border);}
+
+  /* Bottom nav */
+  .nav{position:absolute;left:0;right:0;bottom:0;max-width:480px;margin:0 auto;display:flex;
+    background:linear-gradient(180deg,rgba(11,20,85,.4),var(--bg-bot));border-top:1px solid var(--border);
+    padding:10px 6px calc(10px + env(safe-area-inset-bottom));backdrop-filter:blur(8px);}
+  .nav button{flex:1;background:none;border:none;color:var(--muted-2);font-size:11px;font-weight:600;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;gap:5px;padding:4px 2px;}
+  .nav button.active{color:var(--gold);}
+  .nav svg{width:24px;height:24px;}
+
+  /* Logo */
+  .logo-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .logo{display:flex;align-items:center;gap:14px;}
+  .logo .ball{width:62px;height:62px;flex:none;filter:drop-shadow(0 6px 18px rgba(245,197,24,.3));}
+  .logo .txt{line-height:.96;font-style:italic;font-weight:800;font-size:30px;letter-spacing:1px;}
+  .logo .txt .b{color:#fff;} .logo .txt .y{color:var(--gold);}
+  .logo .sub{font-size:8px;letter-spacing:3px;color:var(--muted-2);font-style:normal;font-weight:700;margin-top:3px;text-align:right;}
+
+  /* Game card */
+  .game-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;}
+  .vs{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:18px 0 6px;}
+  .vs .name{font-size:26px;font-weight:800;}
+  .vs .mid{color:var(--muted);font-weight:800;font-size:20px;}
+  .ath-sub{font-weight:800;font-size:16px;margin-top:2px;}
+  .odd{display:inline-block;background:var(--card-2);border:1px solid var(--border);border-radius:10px;padding:3px 12px;font-weight:800;color:var(--gold);font-size:15px;margin-top:6px;}
+  .bar{height:7px;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden;margin:10px 0 4px;}
+  .bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-2));}
+  .split{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);}
+
+  .stat-grid{display:flex;gap:10px;flex-wrap:wrap;}
+  .stat{flex:1;min-width:0;background:var(--card);border:1.5px solid var(--border);border-radius:16px;padding:16px 12px;text-align:center;}
+  .stat .v{font-size:22px;font-weight:800;line-height:1;}
+  .stat .k{font-size:12px;color:var(--muted-2);margin-top:7px;}
+
+  /* Modal / bottom sheet */
+  .overlay{position:absolute;inset:0;background:rgba(5,9,40,.55);display:none;align-items:flex-end;z-index:50;max-width:480px;margin:0 auto;}
+  .overlay.open{display:flex;}
+  .sheet{width:100%;max-height:92%;overflow-y:auto;background:linear-gradient(180deg,#15235f,#0e1850);
+    border-radius:26px 26px 0 0;padding:22px 20px calc(26px + env(safe-area-inset-bottom));border-top:1px solid var(--border);animation:up .25s ease;}
+  .sheet::-webkit-scrollbar{display:none;}
+  @keyframes up{from{transform:translateY(40px);opacity:.4;}to{transform:translateY(0);opacity:1;}}
+  .grab{width:44px;height:5px;border-radius:99px;background:var(--border-strong);margin:0 auto 16px;}
+  .pick{display:flex;gap:12px;margin:6px 0 4px;}
+  .pick .opt{flex:1;background:var(--card);border:2px solid var(--border);border-radius:18px;padding:22px 10px;text-align:center;cursor:pointer;transition:border-color .12s,background .12s;}
+  .pick .opt.sel{border-color:var(--gold);background:rgba(245,197,24,.08);}
+  .pick .opt .ini{font-size:34px;font-weight:800;color:#fff;}
+  .pick .opt .nm{font-weight:800;margin-top:8px;}
+  .chips{display:flex;gap:10px;flex-wrap:wrap;margin:4px 0;}
+  .chip{flex:1;min-width:70px;background:var(--card);border:2px solid var(--border);border-radius:13px;padding:14px 6px;font-weight:800;cursor:pointer;text-align:center;}
+  .chip.sel{border-color:var(--gold);color:var(--gold);}
+
+  .avatar{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none;background:var(--card-2);border:1.5px solid var(--border);background-size:cover;background-position:center;}
+  .list-item{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--border);}
+  .toast{position:absolute;left:50%;bottom:130px;transform:translateX(-50%);background:#0c1660;border:1px solid var(--gold);
+    color:#fff;padding:12px 20px;border-radius:14px;font-weight:700;z-index:90;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;}
+  .toast.show{opacity:1;}
+  .hidden{display:none !important;}
+  .qr{width:200px;height:200px;margin:0 auto;background:#fff;border-radius:18px;padding:14px;}
+  .seg{display:flex;gap:10px;margin-bottom:18px;}
+  .seg button{flex:1;border-radius:14px;border:1.5px solid var(--border);background:var(--card);color:#fff;font-weight:800;padding:14px;font-size:16px;cursor:pointer;}
+  .seg button.active{background:linear-gradient(180deg,var(--gold),var(--gold-2));color:#101a4d;border-color:transparent;}
+  .empty{text-align:center;color:var(--muted-2);padding:50px 20px;}
+  .rank-row{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--border);}
+  .rank-pos{width:30px;font-weight:800;font-size:18px;color:var(--muted);text-align:center;}
+  .confetti{font-size:54px;text-align:center;animation:pop .5s ease;}
+  @keyframes pop{from{transform:scale(.3);opacity:0;}to{transform:scale(1);opacity:1;}}
+  a.link{color:var(--blue);font-weight:700;text-decoration:none;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="view"></div>
+  <div id="nav"></div>
+</div>
+<div class="overlay" id="overlay"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   PONTO A PONTO — protótipo offline
+   Camada de dados isolada (DB) -> trocar por Firebase depois.
+   ============================================================ */
+
+/* ---------- DB (localStorage) — swap por Firestore no futuro ---------- */
+const DB = {
+  KEY: 'pontoaponto_v3',
+  _data: null,
+  load(){
+    if(this._data) return this._data;
+    const raw = localStorage.getItem(this.KEY);
+    this._data = raw ? JSON.parse(raw) : null;
+    if(!this._data){ this._data = seed(); this.save(); }
+    return this._data;
+  },
+  save(){ localStorage.setItem(this.KEY, JSON.stringify(this._data)); },
+  reset(){ localStorage.removeItem(this.KEY); this._data=null; this.load(); },
+  get users(){ return this.load().users; },
+  get athletes(){ return this.load().athletes; },
+  get projects(){ return this.load().projects; },
+  get games(){ return this.load().games; },
+  get bets(){ return this.load().bets; },
+};
+const uid = ()=> Math.random().toString(36).slice(2,10);
+const MP_FEE = 10; // % taxa fintech (fixa) em todos os jogos
+
+function seed(){
+  const admin={id:uid(),name:'Admin',email:'admin@pap.com',pass:'pap123',role:'admin',pixType:'CPF',pixKey:'—'};
+  return {
+    users:[admin],
+    athletes:[],
+    projects:[],
+    games:[],
+    bets:[]
+  };
+}
+
+/* ---------- Helpers ---------- */
+const $ = s=>document.querySelector(s);
+const money = n => 'R$ ' + (Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const ath = id => DB.athletes.find(a=>a.id===id) || {fullName:'?',nickname:'?'};
+const proj = id => DB.projects.find(p=>p.id===id);
+const game = id => DB.games.find(g=>g.id===id);
+const initials = name => name.split(' ').filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('');
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1900); }
+
+/* Financeiro de um jogo */
+function gamePool(gid){ return DB.bets.filter(b=>b.gameId===gid).reduce((s,b)=>s+b.amount,0); }
+function sideStake(gid,athId){ return DB.bets.filter(b=>b.gameId===gid&&b.athleteId===athId).reduce((s,b)=>s+b.amount,0); }
+// rateio: prêmio = pool - social - casa - MP ; dividido entre quem torceu pelo vencedor
+function prizePool(g){ const pool=gamePool(g.id); return pool*(100-g.socialPct-g.housePct-MP_FEE)/100; }
+
+/* ---------- App state ---------- */
+let S = { user:null, tab:'jogos' };
+
+/* ============================================================
+   AUTH
+   ============================================================ */
+function logoSVG(){
+  return `<div class="logo-wrap">
+    <div class="logo">
+      <svg class="ball" viewBox="0 0 100 100" aria-label="Bola de tênis">
+        <circle cx="50" cy="50" r="46" fill="#f5c518"/>
+        <path d="M50 5 C 23 26, 23 74, 50 95" fill="none" stroke="#13205f" stroke-width="5" stroke-linecap="round"/>
+        <path d="M50 5 C 77 26, 77 74, 50 95" fill="none" stroke="#13205f" stroke-width="5" stroke-linecap="round"/>
+      </svg>
+      <div class="txt"><span class="b">PONTO</span><br><span class="y">A&nbsp;PONTO</span>
+        <div class="sub">ENTRETENIMENTO ESPORTIVO SOCIAL</div></div>
+    </div>
+    <div class="muted" style="margin-top:8px;font-weight:700">O esporte conecta 🎾</div>
+  </div>`;
+}
+
+function renderAuth(mode='login'){
+  $('#nav').innerHTML='';
+  const login = mode==='login';
+  $('#view').innerHTML = `<div class="screen">
+    <div style="margin:30px 0 26px">${logoSVG()}</div>
+    <div class="seg">
+      <button class="${login?'active':''}" onclick="renderAuth('login')">Entrar</button>
+      <button class="${!login?'active':''}" onclick="renderAuth('cadastro')">Cadastrar</button>
+    </div>
+    ${login?`
+      <div class="field"><div class="label">E-mail</div><input id="li-email" type="email" placeholder="seu@email.com"></div>
+      <div class="field"><div class="label">Senha (seu CPF, só números)</div><input id="li-pass" type="password" inputmode="numeric" placeholder="••••••••"></div>
+      <button class="btn btn-gold" style="margin-top:18px" onclick="doLogin()">Entrar</button>
+    `:`
+      <div class="field"><div class="label">Seu nome</div><input id="rg-name" placeholder="Como te chamam?"></div>
+      <div class="field"><div class="label">E-mail (seu login)</div><input id="rg-email" type="email" placeholder="seu@email.com"></div>
+      <div class="field"><div class="label">CPF (será sua senha)</div><input id="rg-cpf" inputmode="numeric" placeholder="000.000.000-00" oninput="onCpfInput(this)"></div>
+      <div class="card" style="margin-bottom:18px">
+        <div style="font-weight:800;font-size:16px">💸 Se ganhar, como deseja receber?</div>
+        <div class="muted2" style="font-size:13px;margin:2px 0 14px">Informe sua chave Pix</div>
+        <div class="field"><div class="label">Tipo de chave</div>
+          <select id="rg-pixtype"><option>CPF</option><option>E-mail</option><option>Telefone</option><option>Chave aleatória</option></select></div>
+        <div class="field" style="margin-bottom:0"><div class="label">Chave Pix</div><input id="rg-pixkey" placeholder="deixe vazio para usar seu CPF"></div>
+      </div>
+      <p class="muted2" style="font-size:13px;margin:0 0 18px">💡 Seu login é o e-mail e sua senha é o seu CPF. Fácil de lembrar!</p>
+      <button class="btn btn-gold" onclick="doRegister()">Criar conta</button>
+    `}
+  </div>`;
+}
+function doLogin(){
+  const email=$('#li-email').value.trim().toLowerCase(), pass=$('#li-pass').value.trim();
+  const passDigits=pass.replace(/\D/g,'');
+  const u=DB.users.find(u=>u.email.toLowerCase()===email && (u.pass===pass || (passDigits&&u.pass===passDigits)));
+  if(!u){ toast('E-mail ou senha inválidos'); return; }
+  S.user=u; S.tab = u.role==='coordenador'?'admin':'jogos'; renderApp();
+}
+// Formata CPF enquanto digita: 000.000.000-00
+function onCpfInput(el){
+  let d=el.value.replace(/\D/g,'').slice(0,11);
+  let out=d;
+  if(d.length>9) out=`${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`;
+  else if(d.length>6) out=`${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`;
+  else if(d.length>3) out=`${d.slice(0,3)}.${d.slice(3)}`;
+  el.value=out;
+}
+function doRegister(){
+  const name=$('#rg-name').value.trim(), email=$('#rg-email').value.trim().toLowerCase(),
+        cpfRaw=$('#rg-cpf').value.replace(/\D/g,''), pixType=$('#rg-pixtype').value;
+  let pixKey=$('#rg-pixkey').value.trim();
+  if(!name||!email){ toast('Preencha nome e e-mail'); return; }
+  if(cpfRaw.length!==11){ toast('Digite um CPF válido (11 números)'); return; }
+  if(DB.users.some(u=>u.email.toLowerCase()===email)){ toast('E-mail já cadastrado'); return; }
+  if(!pixKey) pixKey = pixType==='CPF' ? $('#rg-cpf').value.trim() : '';
+  // senha = CPF (só números). Login = e-mail.
+  const u={id:uid(),name,email,pass:cpfRaw,cpf:cpfRaw,role:'torcedor',pixType,pixKey:pixKey||'—'};
+  DB.users.push(u); DB.save(); S.user=u; S.tab='jogos'; renderApp();
+  toast('Conta criada! Bem-vindo 🎾');
+}
+function logout(){ S.user=null; renderAuth('login'); }
+
+/* ============================================================
+   NAV + ROUTER
+   ============================================================ */
+function icon(name){
+  const p={
+    jogos:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    torcida:'<path d="M6 3h12a1 1 0 0 1 1 1v16l-7-4-7 4V4a1 1 0 0 1 1-1z"/>',
+    impacto:'<path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9z"/>',
+    ranking:'<path d="M6 20V10M12 20V4M18 20v-7"/>',
+    admin:'<path d="M12 2l2.9 6 6.6.5-5 4.3 1.6 6.4L12 16l-6.1 3.2L7.5 12.8l-5-4.3L9 8z"/>',
+  };
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p[name]}</svg>`;
+}
+function renderNav(){
+  if(!S.user) return;
+  let tabs=[['jogos','Jogos'],['torcida','Torcida'],['impacto','Impacto'],['ranking','Ranking'],['admin','Admin']];
+  if(S.user.role==='torcedor') tabs=tabs.filter(t=>t[0]!=='admin');
+  if(S.user.role==='coordenador') tabs=[['jogos','Jogos'],['admin','Painel']];
+  $('#nav').innerHTML = `<div class="nav">${tabs.map(([k,l])=>
+    `<button class="${S.tab===k?'active':''}" onclick="go('${k}')">${icon(k)}<span>${l}</span></button>`).join('')}</div>`;
+}
+function go(tab){ S.tab=tab; renderApp(); }
+function renderApp(){
+  if(!S.user){ renderAuth('login'); return; }
+  renderNav();
+  ({jogos:viewJogos,torcida:viewTorcida,impacto:viewImpacto,ranking:viewRanking,admin:viewAdmin}[S.tab]||viewJogos)();
+}
+
+/* ============================================================
+   JOGOS (torcida)
+   ============================================================ */
+let jogosFilter='abertos';
+function viewJogos(){
+  const open=DB.games.filter(g=>g.status==='aberto');
+  const closed=DB.games.filter(g=>g.status==='encerrado');
+  const list = jogosFilter==='abertos'?open:closed;
+  const myTrend = DB.bets.filter(b=>b.userId===S.user.id).reduce((s,b)=>s+b.amount,0);
+  $('#view').innerHTML = `<div class="screen">
+    <div style="display:flex;justify-content:flex-end"><button class="back" style="margin:0" onclick="logout()">↪ Sair</button></div>
+    <div class="game-head">
+      <div><p class="eyebrow">Olá, ${S.user.name.split(' ')[0]} 👋</p><h1>Jogos</h1></div>
+      <div style="text-align:right"><div class="muted" style="font-size:13px">sua torcida</div><div class="gold" style="font-size:22px;font-weight:800">${money(myTrend)}</div></div>
+    </div>
+    <div class="seg" style="margin:18px 0 22px">
+      <button class="${jogosFilter==='abertos'?'active':''}" onclick="setJF('abertos')">Abertos (${open.length})</button>
+      <button class="${jogosFilter==='encerrados'?'active':''}" onclick="setJF('encerrados')">Encerrados (${closed.length})</button>
+    </div>
+    ${list.length?list.map(gameCard).join(''):'<div class="empty">Nenhum jogo aqui ainda.</div>'}
+  </div>`;
+}
+function setJF(f){ jogosFilter=f; viewJogos(); }
+function gameCard(g){
+  const a1=ath(g.a1), a2=ath(g.a2), s1=sideStake(g.id,g.a1), s2=sideStake(g.id,g.a2), tot=s1+s2;
+  const p1=tot?Math.round(s1/tot*100):0, p2=100-p1;
+  const pj=proj(g.projectId);
+  const open=g.status==='aberto';
+  const winName = g.winner?ath(g.winner).fullName:'';
+  return `<div class="card" style="margin-bottom:22px;${open?'cursor:pointer':''}" ${open?`onclick="openBet('${g.id}')"`:''}>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div><div class="muted2" style="font-size:13px">Jogo avulso</div><div style="font-weight:800;font-size:19px">${g.title}</div></div>
+      <span class="pill" style="color:${open?'var(--gold)':'var(--muted)'}">${open?'🟢 ABERTO':'⚪ ENCERRADO'}</span>
+    </div>
+    <div class="vs">
+      <div style="flex:1"><div class="vs-name" style="font-size:24px;font-weight:800">${a1.nickname}</div></div>
+      <div class="mid">VS</div>
+      <div style="flex:1;text-align:right"><div style="font-size:24px;font-weight:800">${a2.nickname}</div></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><div class="ath-sub">${a1.fullName}</div><span class="odd">${g.odd.toFixed(2)}x</span></div>
+      <div style="text-align:right"><div class="ath-sub">${a2.fullName}</div><span class="odd">${g.odd.toFixed(2)}x</span></div>
+    </div>
+    <div class="bar"><span style="width:${p1}%"></span></div>
+    <div class="split"><span>${p1}% torcendo por ${a1.nickname}</span><span>${p2}% por ${a2.nickname}</span></div>
+    <div class="split" style="margin-top:12px">
+      <span>tendência: <b class="gold">${money(tot)}</b></span>
+      <span class="blue">${pj?`${g.socialPct}% → ${pj.name.split(' ')[0]}`:''}</span>
+    </div>
+    <div class="muted2" style="font-size:12px;margin-top:10px">${g.date} · ${g.time}${open?` · fecha ${g.close}`:winName?` · venceu ${winName}`:''}</div>
+  </div>`;
+}
+
+/* ---------- Bet flow ---------- */
+let bet={};
+function openBet(gid){
+  const g=game(gid); if(g.status!=='aberto') return;
+  bet={gameId:gid, athleteId:g.a1, amount:1};
+  betStep1();
+}
+function betStep1(){
+  const g=game(bet.gameId), a1=ath(g.a1), a2=ath(g.a2), pj=proj(g.projectId);
+  const help = bet.amount*g.socialPct/100, win = bet.amount*g.odd;
+  const opt=(a,id)=>`<div class="opt ${bet.athleteId===id?'sel':''}" onclick="bet.athleteId='${id}';betStep1()">
+      <div class="ini">${initials(a.fullName)}</div><div class="nm">${a.fullName}</div><span class="odd">${g.odd.toFixed(2)}x</span></div>`;
+  openSheet(`
+    <div style="font-weight:800;font-size:24px">${g.title}</div>
+    <div class="muted2" style="margin:2px 0 16px">${g.date} · ${g.time} · fecha às ${g.close}</div>
+    <div class="label">Escolha seu favorito</div>
+    <div class="pick">${opt(a1,g.a1)}${opt(a2,g.a2)}</div>
+    <div class="label" style="margin-top:18px">Escolha sua torcida (mín. R$ 0,50)</div>
+    <div class="chips" id="bet-chips">${chipsHTML()}</div>
+    <input id="bet-amt" type="number" min="0.5" step="0.5" value="${bet.amount}" style="margin:6px 0 4px" oninput="typeAmt(this.value)">
+    <div class="muted2" style="font-size:13px;margin-bottom:14px">Digite qualquer valor a partir de R$ 0,50</div>
+    <div class="card soft" style="margin-bottom:18px">
+      <div class="split"><span class="muted">Ganho estimado</span><b class="green" id="bet-win">≈ ${money(win)}</b></div>
+      <div class="split" style="margin-top:8px"><span class="muted">Ajuda ao projeto</span><b class="blue" id="bet-help">${money(help)} → ${pj?pj.name.split(' ')[0]:'—'}</b></div>
+    </div>
+    <button class="btn btn-gold" onclick="betStep2()">Continuar → Pagar via Pix</button>
+    <button class="btn btn-ghost" style="margin-top:10px" onclick="closeSheet()">Cancelar</button>
+  `);
+}
+function chipsHTML(){ return [0.5,1,2,5].map(v=>`<div class="chip ${bet.amount===v?'sel':''}" onclick="pickAmt(${v})">${money(v)}</div>`).join(''); }
+function pickAmt(v){ bet.amount=v; const i=document.getElementById('bet-amt'); if(i) i.value=v; refreshBet(); }
+function typeAmt(v){ bet.amount=parseFloat(v)||0; refreshBet(); } // não re-renderiza: mantém o foco/cursor
+function refreshBet(){
+  const g=game(bet.gameId), pj=proj(g.projectId);
+  const help=bet.amount*g.socialPct/100, win=bet.amount*g.odd;
+  const w=document.getElementById('bet-win'); if(w) w.textContent='≈ '+money(win);
+  const h=document.getElementById('bet-help'); if(h) h.textContent=`${money(help)} → ${pj?pj.name.split(' ')[0]:'—'}`;
+  const c=document.getElementById('bet-chips'); if(c) c.innerHTML=chipsHTML();
+}
+function betStep2(){
+  if(bet.amount<0.5){ toast('Mínimo R$ 0,50'); return; }
+  openSheet(`
+    <div style="font-weight:800;font-size:24px">Pagar via Pix</div>
+    <div class="muted2" style="margin:2px 0 18px">Escaneie o QR Code abaixo</div>
+    ${fakeQR()}
+    <div class="card soft" style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 14px;gap:10px">
+      <span style="font-size:13px;word-break:break-all">00020126580014br.gov.bcb.pix0136pontoaponto…</span>
+      <b class="gold" style="cursor:pointer" onclick="toast('Código Pix copiado')">Copiar</b>
+    </div>
+    <div class="split" style="font-size:18px"><span class="muted">Valor</span><b class="gold">${money(bet.amount)}</b></div>
+    <p class="muted2" style="text-align:center;font-size:13px;margin:14px 0">⚠️ Após confirmar, sua torcida é <b>irrevogável</b>.</p>
+    <button class="btn btn-gold" onclick="confirmBet()">✓ Confirmar ${money(bet.amount)}</button>
+    <button class="btn btn-ghost" style="margin-top:10px" onclick="betStep1()">← Voltar</button>
+  `);
+}
+function fakeQR(){
+  let cells='';
+  const pat=[[1,1,1,0,1,0,1,1,1],[1,0,1,0,0,1,1,0,1],[1,1,1,1,0,1,1,1,1],[0,0,0,1,1,0,0,0,0],
+    [1,0,1,0,1,1,0,1,0],[0,1,1,1,0,0,1,0,1],[1,1,1,0,1,1,1,0,1],[1,0,1,1,0,0,1,1,0],[1,1,1,0,1,0,1,0,1]];
+  for(let y=0;y<9;y++)for(let x=0;x<9;x++) if(pat[y][x]) cells+=`<rect x="${x*20}" y="${y*20}" width="20" height="20" fill="#101a4d"/>`;
+  return `<svg class="qr" viewBox="0 0 180 180">${cells}</svg>`;
+}
+function confirmBet(){
+  const g=game(bet.gameId);
+  const b={id:uid(),gameId:bet.gameId,userId:S.user.id,athleteId:bet.athleteId,amount:bet.amount,
+    social:bet.amount*g.socialPct/100, house:bet.amount*g.housePct/100, mp:bet.amount*MP_FEE/100,
+    estWin:bet.amount*g.odd, status:'aguardando', paid:false, ts:Date.now()};
+  DB.bets.push(b); DB.save();
+  const a=ath(bet.athleteId), pj=proj(g.projectId);
+  openSheet(`
+    <div class="confetti">🎉</div>
+    <div style="text-align:center;font-weight:800;font-size:26px;margin-top:6px">Torcida confirmada!</div>
+    <div class="muted2" style="text-align:center;margin-bottom:18px">Pix confirmado. Boa sorte!</div>
+    <div class="card soft" style="text-align:center;margin-bottom:14px">
+      <div class="muted">Você está na torcida para</div>
+      <div class="gold" style="font-size:24px;font-weight:800;margin:6px 0">${a.fullName}</div>
+      <div class="muted">se ganhar ≈ <b class="green">${money(b.estWin)}</b></div>
+    </div>
+    <div class="card soft" style="text-align:center;margin-bottom:18px">
+      <div class="muted">você já contribuiu para</div>
+      <div class="blue" style="font-size:20px;font-weight:800;margin:6px 0">${pj?pj.name:'—'}</div>
+      <div class="gold" style="font-size:30px;font-weight:800">${money(b.social)}</div>
+      <div class="muted2" style="font-size:13px;margin-top:6px">O esporte conecta 🎾 mesmo perdendo, esse valor faz diferença!</div>
+    </div>
+    <button class="btn btn-gold" onclick="closeSheet();go('torcida')">Fechar</button>
+  `);
+}
+
+/* ============================================================
+   TORCIDA (histórico)
+   ============================================================ */
+function viewTorcida(){
+  const mine=DB.bets.filter(b=>b.userId===S.user.id).sort((a,b)=>b.ts-a.ts);
+  const won=mine.filter(b=>b.status==='ganhou').reduce((s,b)=>s+(b.payout||0),0);
+  const helped=mine.reduce((s,b)=>s+b.social,0);
+  $('#view').innerHTML=`<div class="screen">
+    <p class="eyebrow">Plataforma de entretenimento</p><h1>Esportivo Social</h1>
+    <div class="stat-grid" style="margin:20px 0 26px">
+      <div class="stat"><div class="v green">${money(won)}</div><div class="k">total ganho</div></div>
+      <div class="stat"><div class="v blue">${money(helped)}</div><div class="k">você ajudou</div></div>
+    </div>
+    <div class="label">Histórico da torcida</div>
+    ${mine.length?mine.map(b=>{
+      const g=game(b.gameId), a=ath(b.athleteId);
+      const st = b.status==='ganhou'?'<span class="pill" style="color:var(--green)">ganhou</span>'
+        : b.status==='perdeu'?'<span class="pill" style="color:var(--muted)">perdeu</span>'
+        : '<span class="pill" style="color:var(--gold)">aguardando</span>';
+      return `<div class="card" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between"><div><b>${g?g.title:'—'}</b>
+          <div class="muted2" style="font-size:14px">estava na torcida por <b style="color:#fff">${a.fullName}</b></div></div>${st}</div>
+        <div class="split" style="margin-top:12px">
+          <div><div class="muted2" style="font-size:12px">torcida</div><b>${money(b.amount)}</b></div>
+          <div style="text-align:right"><div class="muted2" style="font-size:12px">${b.status==='ganhou'?'recebeu':'ajudou'}</div>
+            <b class="blue">${b.status==='ganhou'?money(b.payout):money(b.social)}</b></div>
+        </div></div>`;
+    }).join(''):'<div class="empty">Você ainda não torceu em nenhum jogo.</div>'}
+  </div>`;
+}
+
+/* ============================================================
+   IMPACTO SOCIAL
+   ============================================================ */
+function viewImpacto(){
+  const helped=DB.bets.filter(b=>b.userId===S.user.id).reduce((s,b)=>s+b.social,0);
+  $('#view').innerHTML=`<div class="screen">
+    <div style="display:flex;justify-content:flex-end"><button class="back" style="margin:0" onclick="logout()">↪ Sair</button></div>
+    <p class="eyebrow">Ficar na torcida faz o bem</p><h1>Impacto Social</h1>
+    <div class="card" style="text-align:center;margin:20px 0 26px;background:linear-gradient(180deg,rgba(245,197,24,.10),var(--card))">
+      <div class="muted">total que você já contribuiu</div>
+      <div class="gold" style="font-size:46px;font-weight:800;margin:6px 0">${money(helped)}</div>
+      <div style="font-weight:800">O esporte conecta 🎾</div>
+      <div class="muted2" style="font-size:13px">cada torcida ajuda alguém de verdade</div>
+    </div>
+    <div class="label">Projetos apoiados</div>
+    ${DB.projects.map(p=>{
+      const pct=Math.min(100,Math.round(p.raised/p.goal*100))||0;
+      return `<div class="card" style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-size:30px">${p.emoji}</span><b style="font-size:18px">${p.name}</b></div>
+        <div class="split" style="margin-top:14px"><span class="muted">arrecadado</span><b class="gold">${money(p.raised)} / ${money(p.goal)}</b></div>
+        <div class="bar"><span style="width:${pct}%"></span></div>
+        <div style="text-align:right" class="muted2">${pct}% da meta</div></div>`;
+    }).join('')}
+  </div>`;
+}
+
+/* ============================================================
+   RANKING
+   ============================================================ */
+function viewRanking(){
+  const map={};
+  DB.bets.forEach(b=>{ map[b.userId]=(map[b.userId]||0)+b.social; });
+  const rows=Object.entries(map).map(([id,v])=>({u:DB.users.find(x=>x.id===id),v}))
+    .filter(r=>r.u).sort((a,b)=>b.v-a.v);
+  const medal=i=>['🥇','🥈','🥉'][i]||(i+1);
+  $('#view').innerHTML=`<div class="screen">
+    <div style="display:flex;justify-content:flex-end"><button class="back" style="margin:0" onclick="logout()">↪ Sair</button></div>
+    <p class="eyebrow">Quem ajuda mais?</p><h1>Ranking</h1>
+    <p class="muted" style="margin:6px 0 20px">Quem mais contribuiu para projetos sociais 🌱</p>
+    ${rows.length?rows.map((r,i)=>`<div class="rank-row">
+        <div class="rank-pos">${medal(i)}</div>
+        <div class="avatar" style="width:44px;height:44px">${initials(r.u.name)}</div>
+        <div style="flex:1"><b>${r.u.name}${r.u.id===S.user.id?' <span class="muted2">(você)</span>':''}</b></div>
+        <b class="blue">${money(r.v)}</b>
+      </div>`).join(''):'<div class="empty">Ninguém torceu ainda. Seja o primeiro a ajudar!</div>'}
+  </div>`;
+}
+
+/* ============================================================
+   ADMIN
+   ============================================================ */
+function viewAdmin(){
+  const isCoord = S.user.role==='coordenador';
+  const totalTorcida=DB.bets.reduce((s,b)=>s+b.amount,0);
+  const social=DB.bets.reduce((s,b)=>s+b.social,0);
+  const casa=DB.bets.reduce((s,b)=>s+b.house,0);
+  const items=payItems();
+  const aPagar=items.filter(i=>!i.paid).length;
+  const coordCount=DB.users.filter(u=>u.role==='coordenador').length;
+  const open=DB.games.filter(g=>g.status==='aberto');
+
+  $('#view').innerHTML=`<div class="screen">
+    <p class="eyebrow">Painel</p><h1>${isCoord?'Coordenador 👨‍⚖️':'Admin 🔐'}</h1>
+    ${isCoord?'':`<div class="stat-grid" style="margin:20px 0 18px">
+      <div class="stat"><div class="v gold">${money(totalTorcida)}</div><div class="k">total torcida</div></div>
+      <div class="stat"><div class="v blue">${money(social)}</div><div class="k">social</div></div>
+      <div class="stat"><div class="v muted">${money(casa)}</div><div class="k">da casa</div></div>
+      <div class="stat" style="cursor:pointer" onclick="viewPayments()"><div class="v green">${aPagar}</div><div class="k">a pagar</div></div>
+    </div>`}
+    <div class="row tight" style="margin:${isCoord?'22px':'0'} 0 12px">
+      <button class="btn btn-gold btn-sm" onclick="formGame()">+ Jogo</button>
+      <button class="btn btn-ghost btn-sm" onclick="formAthlete()">+ Atleta</button>
+      ${isCoord?'':`<button class="btn btn-ghost btn-sm" onclick="formProject()">+ Projeto</button>`}
+    </div>
+    ${isCoord?'':`<button class="btn btn-gold" style="margin-bottom:8px" onclick="viewPayments()">💰 Financeiro / Pagamentos${aPagar?` · <b>${aPagar} em aberto</b>`:''}</button>`}
+    ${isCoord?'':`<button class="btn btn-purple" style="margin-bottom:8px" onclick="formCoord()">⚖️ Juízes / Coordenadores (${coordCount})</button>`}
+    <div class="label" style="margin:24px 0 4px">Jogos abertos</div>
+    ${open.length?open.map(g=>{
+      const a1=ath(g.a1),a2=ath(g.a2);
+      const nBets=DB.bets.filter(b=>b.gameId===g.id).length;
+      return `<div class="card" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+          <div style="min-width:0"><b>${g.title}</b>
+            <div class="muted2" style="font-size:13px">${a1.fullName} vs ${a2.fullName} · ${g.date} ${g.time}</div>
+            <div class="gold" style="font-size:13px;font-weight:700">${money(gamePool(g.id))} · ${nBets} torcida(s) · social ${g.socialPct}% · casa ${g.housePct}%</div></div>
+          <button class="btn btn-gold btn-sm" style="width:auto;flex:none" onclick="formResult('${g.id}')">Resultado →</button>
+        </div>
+        <div class="row tight" style="margin-top:12px">
+          <button class="btn btn-ghost btn-sm" onclick="formGame('${g.id}')">✏️ Editar</button>
+          <button class="btn btn-ghost btn-sm" style="${nBets?'opacity:.45':'color:#ff8a8a;border-color:rgba(255,138,138,.4)'}" onclick="deleteGame('${g.id}')">🗑️ Apagar</button>
+        </div>
+      </div>`;
+    }).join(''):'<div class="empty">Nenhum jogo aberto. Toque em <b>+ Jogo</b> para criar.</div>'}
+  </div>`;
+}
+
+/* ---------- FINANCEIRO / PAGAMENTOS ---------- */
+// Monta a lista de obrigações a partir dos jogos encerrados:
+// repasse de projeto + pagamento de cada torcedor vencedor.
+function payItems(){
+  const items=[];
+  DB.games.filter(g=>g.status==='encerrado').forEach(g=>{
+    const pool=gamePool(g.id), social=pool*g.socialPct/100;
+    const pj=proj(g.projectId);
+    if(social>0) items.push({id:'pj-'+g.id, kind:'projeto', gid:g.id,
+      to: pj?`${pj.emoji} ${pj.name}`:'Projeto', sub:`Repasse social · ${g.title}`,
+      dest:'Conta do projeto', amount:social, paid:!!g.projectPaid});
+    DB.bets.filter(b=>b.gameId===g.id&&b.status==='ganhou'&&b.payout>0).forEach(b=>{
+      const u=DB.users.find(x=>x.id===b.userId);
+      items.push({id:'bet-'+b.id, kind:'ganhador', bid:b.id,
+        to: u?u.name:'?', sub:`Ganhador · ${g.title}`,
+        dest: u?`${u.pixType}: ${u.pixKey}`:'—', pixType:u?u.pixType:'', pixKey:u?u.pixKey:'',
+        amount:b.payout, paid:b.paid});
+    });
+  });
+  return items;
+}
+let payFilter='aberto';
+function setPayFilter(f){ payFilter=f; viewPayments(); }
+function viewPayments(){
+  const all=payItems();
+  const open=all.filter(i=>!i.paid), paid=all.filter(i=>i.paid);
+  const list = payFilter==='aberto'?open : payFilter==='pago'?paid : all;
+  const totalOpen=open.reduce((s,i)=>s+i.amount,0), totalPaid=paid.reduce((s,i)=>s+i.amount,0);
+  const badge=k=> k==='projeto'
+    ? '<span class="pill" style="color:var(--blue)">Projeto</span>'
+    : '<span class="pill" style="color:var(--green)">Ganhador</span>';
+  $('#view').innerHTML=`<div class="screen">
+    <button class="back" onclick="viewAdmin()">← Voltar</button>
+    <p class="eyebrow">Controle financeiro</p><h1>Pagamentos</h1>
+    <div class="stat-grid" style="margin:20px 0 18px">
+      <div class="stat"><div class="v gold">${money(totalOpen)}</div><div class="k">em aberto</div></div>
+      <div class="stat"><div class="v green">${money(totalPaid)}</div><div class="k">já pago</div></div>
+    </div>
+    <div class="seg">
+      <button class="${payFilter==='aberto'?'active':''}" onclick="setPayFilter('aberto')">Em aberto (${open.length})</button>
+      <button class="${payFilter==='pago'?'active':''}" onclick="setPayFilter('pago')">Pagos (${paid.length})</button>
+      <button class="${payFilter==='todos'?'active':''}" onclick="setPayFilter('todos')">Todos</button>
+    </div>
+    ${all.length?`<button class="btn btn-ghost btn-sm" style="margin-bottom:16px" onclick="exportPayments()">⬇ Exportar planilha (CSV)</button>`:''}
+    ${list.length?list.map(i=>`
+      <div class="card" style="margin-bottom:12px;${i.paid?'opacity:.7':''}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+          <div style="min-width:0"><b style="font-size:17px">${i.to}</b> ${badge(i.kind)}
+            <div class="muted2" style="font-size:13px;margin-top:3px">${i.sub}</div></div>
+          <div style="text-align:right;flex:none"><div class="${i.kind==='projeto'?'blue':'green'}" style="font-size:20px;font-weight:800">${money(i.amount)}</div></div>
+        </div>
+        ${i.kind==='ganhador'
+          ? `<div class="card soft" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;padding:12px 14px">
+               <div style="min-width:0"><div class="muted2" style="font-size:11px;letter-spacing:.5px">CHAVE PIX (${i.pixType||'—'})</div>
+                 <div style="font-weight:700;word-break:break-all">${i.pixKey&&i.pixKey!=='—'?i.pixKey:'não cadastrada'}</div></div>
+               <button class="btn btn-ghost btn-sm" style="flex:none;width:auto" onclick="copyPix('${(i.pixKey||'').replace(/'/g,'')}')">📋 Copiar</button></div>`
+          : `<div class="muted" style="font-size:13px;margin-top:8px">📲 ${i.dest}</div>`}
+        <button class="btn ${i.paid?'btn-ghost':'btn-gold'} btn-sm" style="margin-top:12px" onclick="togglePay('${i.id}')">
+          ${i.paid?'↩ Reabrir (marcar não pago)':'✓ Marcar como pago'}</button>
+      </div>`).join('')
+      :`<div class="empty">${payFilter==='aberto'?'Tudo pago por aqui ✓':'Nada por aqui ainda.'}</div>`}
+  </div>`;
+}
+function copyPix(k){
+  if(!k || k==='—'){ toast('Sem chave Pix cadastrada'); return; }
+  try{ navigator.clipboard.writeText(k); }
+  catch(e){ const t=document.createElement('textarea'); t.value=k; document.body.appendChild(t); t.select(); try{document.execCommand('copy');}catch(_){}; document.body.removeChild(t); }
+  toast('Chave Pix copiada ✓');
+}
+function togglePay(id){
+  if(id.startsWith('pj-')){ const g=game(id.slice(3)); if(g){ g.projectPaid=!g.projectPaid; DB.save(); } }
+  else { const b=DB.bets.find(x=>x.id===id.slice(4)); if(b){ b.paid=!b.paid; DB.save(); } }
+  viewPayments(); toast('Status atualizado');
+}
+// Exporta a planilha de pagamentos (CSV; abre no Excel / Google Sheets)
+function exportPayments(){
+  const items=payItems();
+  if(!items.length){ toast('Nada para exportar ainda'); return; }
+  const esc=v=>`"${String(v).replace(/"/g,'""')}"`;
+  const brl=n=>Number(n).toFixed(2).replace('.',','); // decimal pt-BR
+  const head=['Beneficiário','Tipo','Jogo / motivo','Chave Pix / destino','Valor (R$)','Status'];
+  const rows=items.map(i=>[
+    i.to.replace(/^[^\sA-Za-zÀ-ÿ]+\s*/,''), // remove emoji do nome do projeto
+    i.kind==='projeto'?'Projeto social':'Ganhador',
+    i.sub, i.dest, brl(i.amount), i.paid?'Pago':'Em aberto'
+  ].map(esc).join(';'));
+  const open=items.filter(i=>!i.paid).reduce((s,i)=>s+i.amount,0);
+  const paid=items.filter(i=>i.paid).reduce((s,i)=>s+i.amount,0);
+  rows.push(''); // linha em branco
+  rows.push([esc('TOTAL EM ABERTO'),'','','',esc(brl(open)),''].join(';'));
+  rows.push([esc('TOTAL PAGO'),'','','',esc(brl(paid)),''].join(';'));
+  const csv='﻿'+head.map(esc).join(';')+'\n'+rows.join('\n'); // BOM p/ acentos no Excel
+  const today=new Date().toISOString().slice(0,10);
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=`pontoaponto_pagamentos_${today}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  toast('Planilha exportada ✓');
+}
+
+/* ---------- Admin forms ---------- */
+function formAthlete(){
+  openSheet(`<button class="back" onclick="closeSheet()">← Voltar</button>
+    <h1 style="margin-bottom:18px">Cadastrar atleta</h1>
+    <div class="field"><div class="label">Nome completo</div><input id="at-name" placeholder="Ex: Pedro Henrique Silva"></div>
+    <div class="field"><div class="label">Apelido</div><input id="at-nick" placeholder="Ex: Pedrin"></div>
+    <div class="field"><div class="label">Foto do atleta (opcional)</div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <div class="avatar" id="at-prev">👤</div>
+        <label class="btn btn-ghost btn-sm" style="border-style:dashed;border-color:var(--gold);color:var(--gold);cursor:pointer">
+          📷 Escolher do dispositivo<input id="at-file" type="file" accept="image/*" class="hidden" onchange="previewAthlete(this)"></label>
+      </div></div>
+    <button class="btn btn-gold" onclick="saveAthlete()">✓ Cadastrar atleta</button>
+    <div class="label" style="margin:24px 0 4px">Atletas cadastrados (${DB.athletes.length})</div>
+    ${DB.athletes.map(a=>`<div class="list-item"><div class="avatar" style="${a.photo?`background-image:url(${a.photo})`:''}">${a.photo?'':initials(a.fullName)}</div>
+      <div><b>${a.fullName}</b><div class="muted2">${a.nickname}</div></div></div>`).join('')}
+  `);
+}
+let athletePhoto=null;
+function previewAthlete(inp){
+  const f=inp.files[0]; if(!f) return;
+  const r=new FileReader(); r.onload=e=>{ athletePhoto=e.target.result; const p=$('#at-prev'); p.textContent=''; p.style.backgroundImage=`url(${athletePhoto})`; }; r.readAsDataURL(f);
+}
+function saveAthlete(){
+  const name=$('#at-name').value.trim(); if(!name){ toast('Informe o nome'); return; }
+  const nick=$('#at-nick').value.trim()||name.split(' ')[0];
+  DB.athletes.push({id:uid(),fullName:name,nickname:nick,photo:athletePhoto}); DB.save(); athletePhoto=null;
+  toast('Atleta cadastrado ✓'); formAthlete();
+}
+
+function formProject(){
+  openSheet(`<button class="back" onclick="closeSheet()">← Voltar</button>
+    <h1 style="margin-bottom:18px">Cadastrar projeto social</h1>
+    <div class="field"><div class="label">Nome do projeto</div><input id="pj-name" placeholder="Ex: Academia Bola na Rede"></div>
+    <div class="field"><div class="label">Descrição</div><input id="pj-desc" placeholder="Ex: Tênis gratuito para crianças"></div>
+    <div class="field"><div class="label">Emoji / ícone</div><input id="pj-emoji" value="🎾" maxlength="2"></div>
+    <div class="field"><div class="label">Meta de arrecadação (R$)</div><input id="pj-goal" type="number" placeholder="1000"></div>
+    <button class="btn btn-gold" onclick="saveProject()">✓ Cadastrar projeto</button>
+    <div class="label" style="margin:24px 0 4px">Projetos cadastrados (${DB.projects.length})</div>
+    ${DB.projects.map(p=>`<div class="list-item"><span style="font-size:26px">${p.emoji}</span>
+      <div><b>${p.name}</b><div class="muted2">${money(p.raised)} / ${money(p.goal)}</div></div></div>`).join('')}
+  `);
+}
+function saveProject(){
+  const name=$('#pj-name').value.trim(); if(!name){ toast('Informe o nome'); return; }
+  DB.projects.push({id:uid(),name,desc:$('#pj-desc').value.trim(),emoji:$('#pj-emoji').value||'🎾',
+    goal:parseFloat($('#pj-goal').value)||1000,raised:0}); DB.save();
+  toast('Projeto cadastrado ✓'); formProject();
+}
+
+function formGame(editId){
+  const isCoord=S.user.role==='coordenador';
+  const g = editId?game(editId):null;
+  if(!DB.athletes.length){ toast('Cadastre atletas primeiro (+ Atleta)'); return; }
+  if(!DB.projects.length){ toast('Cadastre um projeto social primeiro (+ Projeto)'); return; }
+  const aOpts=DB.athletes.map(a=>`<option value="${a.id}">${a.fullName}</option>`).join('');
+  const pOpts=DB.projects.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  const hp = g?g.housePct:(isCoord?5:10);
+  const nBets = g?DB.bets.filter(b=>b.gameId===g.id).length:0;
+  const lock = nBets>0?'disabled style="opacity:.55"':''; // trava regras do jogo após começar a torcida
+  const lockHp = (isCoord||nBets>0)?'disabled style="opacity:.55"':'';
+  openSheet(`<button class="back" onclick="closeSheet()">← Voltar</button>
+    <h1 style="margin-bottom:18px">${g?'Editar jogo':'Criar jogo'}</h1>
+    ${nBets>0?`<div class="card soft" style="margin-bottom:16px;border-color:var(--gold)"><b class="gold">⚠️ ${nBets} torcida(s) já feita(s).</b><div class="muted2" style="font-size:13px;margin-top:4px">Atletas e percentuais ficam travados para não mudar a regra do jogo. Você ainda pode ajustar título, data e horários.</div></div>`:''}
+    <div class="field"><div class="label">Título do jogo</div><input id="g-title" placeholder="Ex: Final do Torneio Verão"></div>
+    <div class="field"><div class="label">Atleta 1</div><div class="row tight"><select id="g-a1" ${lock}>${aOpts}</select>
+      <button class="btn btn-ghost btn-sm" style="flex:none;width:auto" onclick="quickAthlete()">+ Novo</button></div></div>
+    <div class="field"><div class="label">Atleta 2</div><div class="row tight"><select id="g-a2" ${lock}>${aOpts}</select>
+      <button class="btn btn-ghost btn-sm" style="flex:none;width:auto" onclick="quickAthlete()">+ Novo</button></div></div>
+    <div class="row"><div class="field"><div class="label">Data</div><input id="g-date" type="date"></div>
+      <div class="field"><div class="label">Horário</div><input id="g-time" type="time" value="16:00"></div></div>
+    <div class="field"><div class="label">Apostas fecham às</div><input id="g-close" type="time" value="15:30"></div>
+    <div class="field"><div class="label">Projeto social</div><div class="row tight"><select id="g-proj" ${lock}>${pOpts}</select>
+      <button class="btn btn-ghost btn-sm" style="flex:none;width:auto" onclick="quickProject()">+ Novo</button></div></div>
+    <div class="row"><div class="field"><div class="label">% Projeto social</div><input id="g-sp" type="number" value="20" ${lock}></div>
+      <div class="field"><div class="label">% da casa</div><input id="g-hp" type="number" value="${hp}" ${lockHp}></div></div>
+    <p class="muted2" style="font-size:13px;margin:-4px 0 16px">+ 10% de taxa fintech (fixa) em todos os jogos${isCoord?'. Como coordenador, a % da casa é fixa em 5%.':'.'}</p>
+    <button class="btn btn-gold" onclick="saveGame('${editId||''}')">✓ ${g?'Salvar alterações':'Criar jogo'}</button>
+  `);
+  if(g){
+    $('#g-title').value=g.title; $('#g-a1').value=g.a1; $('#g-a2').value=g.a2;
+    $('#g-date').value=g.date; $('#g-time').value=g.time; $('#g-close').value=g.close;
+    $('#g-proj').value=g.projectId; $('#g-sp').value=g.socialPct; $('#g-hp').value=g.housePct;
+  } else {
+    $('#g-date').value=new Date().toISOString().slice(0,10); // data de hoje
+    if(DB.athletes.length>1){ $('#g-a2').selectedIndex=1; }
+  }
+}
+function quickAthlete(){ toast('Use a aba "+ Atleta" e ele aparece aqui'); }
+function quickProject(){ toast('Use a aba "+ Projeto" e ele aparece aqui'); }
+function saveGame(editId){
+  const title=$('#g-title').value.trim()||'Jogo avulso';
+  const a1=$('#g-a1').value, a2=$('#g-a2').value;
+  if(a1===a2){ toast('Escolha atletas diferentes'); return; }
+  const isCoord=S.user.role==='coordenador';
+  const fields={title,a1,a2,date:$('#g-date').value,time:$('#g-time').value,close:$('#g-close').value,
+    projectId:$('#g-proj').value, socialPct:parseFloat($('#g-sp').value)||20,
+    housePct:isCoord?5:(parseFloat($('#g-hp').value)||10)};
+  if(editId){
+    const g=game(editId); if(g){ Object.assign(g,fields); DB.save(); toast('Jogo atualizado ✓'); }
+  } else {
+    DB.games.unshift({id:uid(),...fields, odd:2, status:'aberto', winner:null, createdBy:S.user.id});
+    DB.save(); toast('Jogo criado ✓');
+  }
+  closeSheet(); viewAdmin();
+}
+function deleteGame(gid){
+  const n=DB.bets.filter(b=>b.gameId===gid).length;
+  if(n>0){ toast(`Não dá para apagar: já tem ${n} torcida(s)`); return; }
+  if(!confirm('Apagar este jogo? Esta ação não pode ser desfeita.')) return;
+  const i=DB.games.findIndex(g=>g.id===gid);
+  if(i>=0){ DB.games.splice(i,1); DB.save(); toast('Jogo apagado'); }
+  viewAdmin();
+}
+
+function formCoord(){
+  const coords=DB.users.filter(u=>u.role==='coordenador');
+  openSheet(`<button class="back" onclick="closeSheet()">← Voltar</button>
+    <h1 style="margin-bottom:6px">Juízes / Coordenadores</h1>
+    <p class="muted" style="margin:0 0 18px">Podem criar jogos, atletas e lançar resultados. <b>Sem acesso ao financeiro.</b></p>
+    <div class="field"><div class="label">Nome</div><input id="c-name" placeholder="Nome do coordenador"></div>
+    <div class="field"><div class="label">E-mail (login)</div><input id="c-email" placeholder="email@exemplo.com"></div>
+    <div class="field"><div class="label">Senha</div><input id="c-pass" placeholder="senha de acesso"></div>
+    <button class="btn btn-gold" onclick="saveCoord()">✓ Cadastrar coordenador</button>
+    <div class="label" style="margin:24px 0 4px">Cadastrados (${coords.length})</div>
+    ${coords.map(c=>`<div class="list-item"><div class="avatar" style="width:44px;height:44px">${initials(c.name)}</div>
+      <div><b>${c.name}</b><div class="muted2">${c.email}</div></div></div>`).join('')}
+  `);
+}
+function saveCoord(){
+  const name=$('#c-name').value.trim(), email=$('#c-email').value.trim().toLowerCase(), pass=$('#c-pass').value;
+  if(!name||!email||!pass){ toast('Preencha todos os campos'); return; }
+  if(DB.users.some(u=>u.email.toLowerCase()===email)){ toast('E-mail já existe'); return; }
+  DB.users.push({id:uid(),name,email,pass,role:'coordenador',pixType:'CPF',pixKey:'—'}); DB.save();
+  toast('Coordenador cadastrado ✓'); formCoord();
+}
+
+/* ---------- Resultado / liquidação (rateio) ---------- */
+function formResult(gid){
+  const g=game(gid), a1=ath(g.a1), a2=ath(g.a2), pool=gamePool(gid), prize=prizePool(g);
+  openSheet(`<button class="back" onclick="closeSheet()">← Voltar</button>
+    <h1 style="margin-bottom:6px">Resultado</h1>
+    <div class="muted" style="margin-bottom:18px">${g.title} · ${a1.fullName} vs ${a2.fullName}</div>
+    <div class="card soft" style="margin-bottom:18px">
+      <div class="split"><span class="muted">Total torcida</span><b>${money(pool)}</b></div>
+      <div class="split" style="margin-top:6px"><span class="muted">→ projeto (${g.socialPct}%)</span><b class="blue">${money(pool*g.socialPct/100)}</b></div>
+      <div class="split" style="margin-top:6px"><span class="muted">→ casa (${g.housePct}%)</span><b>${money(pool*g.housePct/100)}</b></div>
+      <div class="split" style="margin-top:6px"><span class="muted">→ taxa fintech (${MP_FEE}%)</span><b>${money(pool*MP_FEE/100)}</b></div>
+      <div class="split" style="margin-top:6px"><span class="muted">prêmio a ratear</span><b class="green">${money(prize)}</b></div>
+    </div>
+    <div class="label">Quem venceu?</div>
+    <div class="pick">
+      <div class="opt" onclick="settle('${gid}','${g.a1}')"><div class="ini">${initials(a1.fullName)}</div><div class="nm">${a1.fullName}</div></div>
+      <div class="opt" onclick="settle('${gid}','${g.a2}')"><div class="ini">${initials(a2.fullName)}</div><div class="nm">${a2.fullName}</div></div>
+    </div>
+    <p class="muted2" style="font-size:13px;margin-top:14px">Só quem torceu pelo vencedor recebe (rateio proporcional). O atleta não recebe.</p>
+  `);
+}
+function settle(gid, winnerId){
+  const g=game(gid); g.status='encerrado'; g.winner=winnerId;
+  const bets=DB.bets.filter(b=>b.gameId===gid);
+  const prize=prizePool(g);
+  const winStake=bets.filter(b=>b.athleteId===winnerId).reduce((s,b)=>s+b.amount,0);
+  bets.forEach(b=>{
+    if(b.athleteId===winnerId){ b.status='ganhou'; b.payout = winStake?prize*(b.amount/winStake):0; }
+    else { b.status='perdeu'; b.payout=0; }
+  });
+  // realiza a arrecadação social no projeto
+  const pj=proj(g.projectId);
+  if(pj){ pj.raised += gamePool(gid)*g.socialPct/100; }
+  // se ninguém acertou, o prêmio vira doação ao projeto
+  if(!winStake && pj){ pj.raised += prize; }
+  DB.save(); closeSheet(); viewAdmin();
+  toast('Jogo encerrado e rateio calculado ✓');
+}
+
+/* ---------- Sheet utils ---------- */
+function openSheet(html){ $('#sheet').innerHTML=`<div class="grab"></div>`+html; $('#overlay').classList.add('open'); $('#sheet').scrollTop=0; }
+function closeSheet(){ $('#overlay').classList.remove('open'); }
+$('#overlay').addEventListener('click',e=>{ if(e.target.id==='overlay') closeSheet(); });
+
+/* ---------- Boot ---------- */
+DB.load();
+renderAuth('login');
+</script>
+</body>
+</html>
