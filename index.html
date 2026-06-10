@@ -136,6 +136,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<!-- Gerador de QR Code (para o Pix real) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 
 <script>
 /* ============================================================
@@ -165,6 +167,40 @@ const isAdminEmail = e => ADMIN_EMAILS.includes(String(e||'').toLowerCase());
 
 const uid = ()=> Math.random().toString(36).slice(2,10);
 const MP_FEE = 10; // % taxa fintech (fixa) em todos os jogos
+
+/* ---------- Pix (recebimento da torcida) ---------- */
+const PIX = {
+  key:  '7f072210-fb0a-488b-96ff-ab1a70fde631', // chave Pix do Mercado Pago (recebedor)
+  name: 'Yuri Silveira Freire',                  // nome do recebedor (máx 25)
+  city: 'MONTES CLAROS'                          // cidade (máx 15, sem acento)
+};
+// Gera o "copia e cola" Pix (BR Code / padrão EMV do Bacen)
+function pixPayload(amount, txid){
+  const tlv=(id,v)=> id + String(v.length).padStart(2,'0') + v;
+  const mai = tlv('00','br.gov.bcb.pix') + tlv('01', PIX.key);
+  const adf = tlv('05', String(txid||'***').replace(/[^A-Za-z0-9]/g,'').slice(0,25) || '***');
+  let p = tlv('00','01')
+        + tlv('26', mai)
+        + tlv('52','0000')
+        + tlv('53','986')
+        + (amount?tlv('54', Number(amount).toFixed(2)):'')
+        + tlv('58','BR')
+        + tlv('59', PIX.name.slice(0,25))
+        + tlv('60', PIX.city.slice(0,15))
+        + tlv('62', adf)
+        + '6304';
+  return p + crc16(p);
+}
+function crc16(str){
+  let crc=0xFFFF;
+  for(let i=0;i<str.length;i++){
+    crc ^= str.charCodeAt(i)<<8;
+    for(let j=0;j<8;j++){ crc = (crc & 0x8000) ? ((crc<<1)^0x1021) : (crc<<1); crc &= 0xFFFF; }
+  }
+  return crc.toString(16).toUpperCase().padStart(4,'0');
+}
+// Só torcidas confirmadas (Pix recebido) contam no bolão
+function isOk(b){ return b.confirmed===true; }
 
 function seedAdmin(){ return {id:'admin',name:'Admin',email:'admin@pap.com',pass:'pap123',role:'admin',pixType:'CPF',pixKey:'—'}; }
 function seed(){ return {users:[seedAdmin()],athletes:[],projects:[],games:[],bets:[]}; }
@@ -238,9 +274,9 @@ const game = id => DB.games.find(g=>g.id===id);
 const initials = name => name.split(' ').filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('');
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1900); }
 
-/* Financeiro de um jogo */
-function gamePool(gid){ return DB.bets.filter(b=>b.gameId===gid).reduce((s,b)=>s+b.amount,0); }
-function sideStake(gid,athId){ return DB.bets.filter(b=>b.gameId===gid&&b.athleteId===athId).reduce((s,b)=>s+b.amount,0); }
+/* Financeiro de um jogo (somente torcidas confirmadas) */
+function gamePool(gid){ return DB.bets.filter(b=>b.gameId===gid&&isOk(b)).reduce((s,b)=>s+b.amount,0); }
+function sideStake(gid,athId){ return DB.bets.filter(b=>b.gameId===gid&&b.athleteId===athId&&isOk(b)).reduce((s,b)=>s+b.amount,0); }
 // rateio: prêmio = pool - social - casa - MP ; dividido entre quem torceu pelo vencedor
 function prizePool(g){ const pool=gamePool(g.id); return pool*(100-g.socialPct-g.housePct-MP_FEE)/100; }
 
@@ -354,7 +390,7 @@ async function doRegister(){
   }catch(e){ toast(authErro(e)); }
 }
 function logout(){
-  if(USE_FIRESTORE){ fauth.signOut(); } // onAuthStateChanged volta pro login
+  if(USE_FIRESTORE){ stopListeners(); fauth.signOut(); } // desliga os ouvintes ANTES de sair (evita erro de permissão no logout)
   else { S.user=null; renderAuth('login'); }
 }
 // Reage ao login/logout do Firebase: carrega o perfil e liga os dados em tempo real
@@ -461,7 +497,7 @@ function gameCard(g){
 let bet={};
 function openBet(gid){
   const g=game(gid); if(g.status!=='aberto') return;
-  bet={gameId:gid, athleteId:g.a1, amount:1};
+  bet={id:uid(), gameId:gid, athleteId:g.a1, amount:1}; // id já definido para virar o txid do Pix
   betStep1();
 }
 function betStep1(){
@@ -498,45 +534,49 @@ function refreshBet(){
 }
 function betStep2(){
   if(bet.amount<0.5){ toast('Mínimo R$ 0,50'); return; }
+  const payload = pixPayload(bet.amount, ('PP'+bet.id).toUpperCase());
+  bet.pixCode = payload;
   openSheet(`
     <div style="font-weight:800;font-size:24px">Pagar via Pix</div>
-    <div class="muted2" style="margin:2px 0 18px">Escaneie o QR Code abaixo</div>
-    ${fakeQR()}
-    <div class="card soft" style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 14px;gap:10px">
-      <span style="font-size:13px;word-break:break-all">00020126580014br.gov.bcb.pix0136pontoaponto…</span>
-      <b class="gold" style="cursor:pointer" onclick="toast('Código Pix copiado')">Copiar</b>
+    <div class="muted2" style="margin:2px 0 18px">Escaneie o QR ou copie o código abaixo</div>
+    ${realQR(payload)}
+    <div class="card soft" style="text-align:center;margin:14px 0 6px"><div class="muted2" style="font-size:12px">RECEBEDOR</div>
+      <div style="font-weight:700">${PIX.name}</div></div>
+    <div class="card soft" style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 14px;gap:10px">
+      <span style="font-size:12px;word-break:break-all;max-height:48px;overflow:hidden">${payload}</span>
+      <b class="gold" style="cursor:pointer;flex:none" onclick="copyPix(${JSON.stringify(payload)})">Copiar</b>
     </div>
     <div class="split" style="font-size:18px"><span class="muted">Valor</span><b class="gold">${money(bet.amount)}</b></div>
-    <p class="muted2" style="text-align:center;font-size:13px;margin:14px 0">⚠️ Após confirmar, sua torcida é <b>irrevogável</b>.</p>
-    <button class="btn btn-gold" onclick="confirmBet()">✓ Confirmar ${money(bet.amount)}</button>
+    <p class="muted2" style="text-align:center;font-size:13px;margin:14px 0">Pague o Pix no seu banco e toque abaixo. Sua torcida entra no jogo após o admin <b>confirmar o recebimento</b>.</p>
+    <button class="btn btn-gold" onclick="confirmBet()">✓ Já fiz o Pix de ${money(bet.amount)}</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="betStep1()">← Voltar</button>
   `);
 }
-function fakeQR(){
-  let cells='';
-  const pat=[[1,1,1,0,1,0,1,1,1],[1,0,1,0,0,1,1,0,1],[1,1,1,1,0,1,1,1,1],[0,0,0,1,1,0,0,0,0],
-    [1,0,1,0,1,1,0,1,0],[0,1,1,1,0,0,1,0,1],[1,1,1,0,1,1,1,0,1],[1,0,1,1,0,0,1,1,0],[1,1,1,0,1,0,1,0,1]];
-  for(let y=0;y<9;y++)for(let x=0;x<9;x++) if(pat[y][x]) cells+=`<rect x="${x*20}" y="${y*20}" width="20" height="20" fill="#101a4d"/>`;
-  return `<svg class="qr" viewBox="0 0 180 180">${cells}</svg>`;
+function realQR(payload){
+  try{
+    const qr=qrcode(0,'M'); qr.addData(payload); qr.make();
+    return `<img class="qr" src="${qr.createDataURL(6,12)}" alt="QR Code Pix" style="display:block;margin:0 auto;width:210px;height:210px">`;
+  }catch(e){ return `<div class="card soft" style="text-align:center">Não foi possível gerar o QR. Use o código "copia e cola" abaixo.</div>`; }
 }
 function confirmBet(){
   const g=game(bet.gameId);
-  const b={id:uid(),gameId:bet.gameId,userId:S.user.id,userName:S.user.name,athleteId:bet.athleteId,amount:bet.amount,
+  const b={id:bet.id,gameId:bet.gameId,userId:S.user.id,userName:S.user.name,athleteId:bet.athleteId,amount:bet.amount,
     social:bet.amount*g.socialPct/100, house:bet.amount*g.housePct/100, mp:bet.amount*MP_FEE/100,
-    estWin:bet.amount*g.odd, status:'aguardando', paid:false, ts:Date.now()};
+    estWin:bet.amount*g.odd, pixCode:bet.pixCode||'', confirmed:false, status:'aguardando', paid:false, ts:Date.now()};
   DB.put('bets', b);
   const a=ath(bet.athleteId), pj=proj(g.projectId);
   openSheet(`
     <div class="confetti">🎉</div>
-    <div style="text-align:center;font-weight:800;font-size:26px;margin-top:6px">Torcida confirmada!</div>
-    <div class="muted2" style="text-align:center;margin-bottom:18px">Pix confirmado. Boa sorte!</div>
+    <div style="text-align:center;font-weight:800;font-size:26px;margin-top:6px">Torcida registrada!</div>
+    <div class="muted2" style="text-align:center;margin-bottom:18px">Assim que o recebimento for confirmado, ela entra no jogo.</div>
     <div class="card soft" style="text-align:center;margin-bottom:14px">
       <div class="muted">Você está na torcida para</div>
       <div class="gold" style="font-size:24px;font-weight:800;margin:6px 0">${a.fullName}</div>
       <div class="muted">se ganhar ≈ <b class="green">${money(b.estWin)}</b></div>
+      <div class="pill" style="margin-top:10px;color:var(--gold)">⏳ aguardando confirmação</div>
     </div>
     <div class="card soft" style="text-align:center;margin-bottom:18px">
-      <div class="muted">você já contribuiu para</div>
+      <div class="muted">sua contribuição para</div>
       <div class="blue" style="font-size:20px;font-weight:800;margin:6px 0">${pj?pj.name:'—'}</div>
       <div class="gold" style="font-size:30px;font-weight:800">${money(b.social)}</div>
       <div class="muted2" style="font-size:13px;margin-top:6px">O esporte conecta 🎾 mesmo perdendo, esse valor faz diferença!</div>
@@ -551,7 +591,7 @@ function confirmBet(){
 function viewTorcida(){
   const mine=DB.bets.filter(b=>b.userId===S.user.id).sort((a,b)=>b.ts-a.ts);
   const won=mine.filter(b=>b.status==='ganhou').reduce((s,b)=>s+(b.payout||0),0);
-  const helped=mine.reduce((s,b)=>s+b.social,0);
+  const helped=mine.filter(isOk).reduce((s,b)=>s+b.social,0);
   $('#view').innerHTML=`<div class="screen">
     <p class="eyebrow">Plataforma de entretenimento</p><h1>Esportivo Social</h1>
     <div class="stat-grid" style="margin:20px 0 26px">
@@ -561,7 +601,8 @@ function viewTorcida(){
     <div class="label">Histórico da torcida</div>
     ${mine.length?mine.map(b=>{
       const g=game(b.gameId), a=ath(b.athleteId);
-      const st = b.status==='ganhou'?'<span class="pill" style="color:var(--green)">ganhou</span>'
+      const st = !isOk(b)?'<span class="pill" style="color:var(--gold)">⏳ a confirmar</span>'
+        : b.status==='ganhou'?'<span class="pill" style="color:var(--green)">ganhou</span>'
         : b.status==='perdeu'?'<span class="pill" style="color:var(--muted)">perdeu</span>'
         : '<span class="pill" style="color:var(--gold)">aguardando</span>';
       return `<div class="card" style="margin-bottom:14px">
@@ -580,7 +621,7 @@ function viewTorcida(){
    IMPACTO SOCIAL
    ============================================================ */
 function viewImpacto(){
-  const helped=DB.bets.filter(b=>b.userId===S.user.id).reduce((s,b)=>s+b.social,0);
+  const helped=DB.bets.filter(b=>b.userId===S.user.id&&isOk(b)).reduce((s,b)=>s+b.social,0);
   $('#view').innerHTML=`<div class="screen">
     <div style="display:flex;justify-content:flex-end"><button class="back" style="margin:0" onclick="logout()">↪ Sair</button></div>
     <p class="eyebrow">Ficar na torcida faz o bem</p><h1>Impacto Social</h1>
@@ -608,7 +649,7 @@ function viewImpacto(){
 function viewRanking(){
   // usa o nome gravado na própria torcida (userName), sem precisar ler dados de outros usuários
   const map={};
-  DB.bets.forEach(b=>{ const k=b.userId; if(!map[k]) map[k]={name:b.userName||'Torcedor',v:0}; map[k].v+=b.social; });
+  DB.bets.filter(isOk).forEach(b=>{ const k=b.userId; if(!map[k]) map[k]={name:b.userName||'Torcedor',v:0}; map[k].v+=b.social; });
   const rows=Object.entries(map).map(([id,o])=>({id,name:o.name,v:o.v})).sort((a,b)=>b.v-a.v);
   const medal=i=>['🥇','🥈','🥉'][i]||(i+1);
   $('#view').innerHTML=`<div class="screen">
@@ -629,11 +670,13 @@ function viewRanking(){
    ============================================================ */
 function viewAdmin(){
   const isCoord = S.user.role==='coordenador';
-  const totalTorcida=DB.bets.reduce((s,b)=>s+b.amount,0);
-  const social=DB.bets.reduce((s,b)=>s+b.social,0);
-  const casa=DB.bets.reduce((s,b)=>s+b.house,0);
+  const okBets=DB.bets.filter(isOk);
+  const totalTorcida=okBets.reduce((s,b)=>s+b.amount,0);
+  const social=okBets.reduce((s,b)=>s+b.social,0);
+  const casa=okBets.reduce((s,b)=>s+b.house,0);
   const items=payItems();
   const aPagar=items.filter(i=>!i.paid).length;
+  const aConfirmar=DB.bets.filter(b=>!isOk(b)).length;
   const coordCount=DB.users.filter(u=>u.role==='coordenador').length;
   const open=DB.games.filter(g=>g.status==='aberto');
 
@@ -650,6 +693,7 @@ function viewAdmin(){
       <button class="btn btn-ghost btn-sm" onclick="formAthlete()">+ Atleta</button>
       ${isCoord?'':`<button class="btn btn-ghost btn-sm" onclick="formProject()">+ Projeto</button>`}
     </div>
+    ${isCoord?'':`<button class="btn ${aConfirmar?'btn-gold':'btn-ghost'}" style="margin-bottom:8px" onclick="viewConfirm()">🧾 Confirmar recebimentos${aConfirmar?` · <b>${aConfirmar} aguardando</b>`:''}</button>`}
     ${isCoord?'':`<button class="btn btn-gold" style="margin-bottom:8px" onclick="viewPayments()">💰 Financeiro / Pagamentos${aPagar?` · <b>${aPagar} em aberto</b>`:''}</button>`}
     ${isCoord?'':`<button class="btn btn-purple" style="margin-bottom:8px" onclick="formCoord()">⚖️ Juízes / Coordenadores (${coordCount})</button>`}
     <div class="label" style="margin:24px 0 4px">Jogos abertos</div>
@@ -670,6 +714,47 @@ function viewAdmin(){
       </div>`;
     }).join(''):'<div class="empty">Nenhum jogo aberto. Toque em <b>+ Jogo</b> para criar.</div>'}
   </div>`;
+}
+
+/* ---------- CONFIRMAR RECEBIMENTOS (Pix) ---------- */
+function viewConfirm(){
+  currentRender = viewConfirm;
+  const pend=DB.bets.filter(b=>!isOk(b)).sort((a,b)=>b.ts-a.ts);
+  const total=pend.reduce((s,b)=>s+b.amount,0);
+  $('#view').innerHTML=`<div class="screen">
+    <button class="back" onclick="viewAdmin()">← Voltar</button>
+    <p class="eyebrow">Confira no seu Mercado Pago</p><h1>Confirmar recebimentos</h1>
+    <div class="card soft" style="margin:18px 0"><div class="muted2" style="font-size:13px">Confira no app do Mercado Pago se o Pix de cada torcedor entrou. Confirme só os que <b>realmente caíram</b> na conta. Só então a torcida entra no jogo.</div></div>
+    <div class="stat-grid" style="margin-bottom:18px">
+      <div class="stat"><div class="v gold">${money(total)}</div><div class="k">aguardando</div></div>
+      <div class="stat"><div class="v muted">${pend.length}</div><div class="k">torcida(s)</div></div>
+    </div>
+    ${pend.length?pend.map(b=>{
+      const g=game(b.gameId), a=ath(b.athleteId);
+      const d=new Date(b.ts);
+      return `<div class="card" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+          <div style="min-width:0"><b style="font-size:17px">${b.userName||'Torcedor'}</b>
+            <div class="muted2" style="font-size:13px">${g?g.title:'—'} · torce por <b style="color:#fff">${a.nickname}</b></div>
+            <div class="muted2" style="font-size:12px">${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} · ref PP${String(b.id).toUpperCase()}</div></div>
+          <div class="gold" style="font-size:20px;font-weight:800;flex:none">${money(b.amount)}</div>
+        </div>
+        <div class="row tight" style="margin-top:12px">
+          <button class="btn btn-gold btn-sm" onclick="confirmTorcida('${b.id}')">✓ Recebi, confirmar</button>
+          <button class="btn btn-ghost btn-sm" style="color:#ff8a8a;border-color:rgba(255,138,138,.4)" onclick="refuseTorcida('${b.id}')">✕ Não recebi</button>
+        </div>
+      </div>`;
+    }).join(''):'<div class="empty">Nenhuma torcida aguardando confirmação ✓</div>'}
+  </div>`;
+}
+function confirmTorcida(id){
+  const b=DB.bets.find(x=>x.id===id); if(!b) return;
+  b.confirmed=true; DB.put('bets', b);
+  toast('Recebimento confirmado ✓'); viewConfirm();
+}
+function refuseTorcida(id){
+  if(!confirm('Marcar como NÃO recebido e remover esta torcida?')) return;
+  DB.del('bets', id); toast('Torcida removida'); viewConfirm();
 }
 
 /* ---------- FINANCEIRO / PAGAMENTOS ---------- */
@@ -937,7 +1022,7 @@ function formResult(gid){
 }
 function settle(gid, winnerId){
   const g=game(gid);
-  const bets=DB.bets.filter(b=>b.gameId===gid);
+  const bets=DB.bets.filter(b=>b.gameId===gid&&isOk(b)); // só torcidas confirmadas entram no rateio
   const prize=prizePool(g);
   const winStake=bets.filter(b=>b.athleteId===winnerId).reduce((s,b)=>s+b.amount,0);
   // realiza a arrecadação social no projeto
